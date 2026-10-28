@@ -217,3 +217,8 @@ table.grid td.gap { background: #fffaf3; }
 .miss-btn { color: var(--optional-ink); }
 .ok-n { color: var(--prelims-ink); font-weight: 700; } .miss-n { color: var(--optional-ink); font-weight: 600; }
 .kpi small { display: block; margin-top: 2px; }
+
+/* name cell: the name, then its Edit button */
+table.grid .cv.nmv { display: flex; align-items: center; gap: 8px; padding-right: 6px; }
+table.grid .cv.nmv .nmt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+table.grid .cv.nmv .ebtn { flex: none; height: 28px; }

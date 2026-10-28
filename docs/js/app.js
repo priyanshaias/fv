@@ -20,7 +20,7 @@
 
   // the columns of the sheet, as in the "List of Volunteers" format sent to divisions
   const COLS = [
-    { k: 'name', label: 'Name of Forest Volunteer Engaged', w: 230, req: true, cls: 'nm' },
+    { k: 'name', label: 'Name of Forest Volunteer Engaged', w: 280, req: true, cls: 'nm' },
     { k: 'dob', label: 'Date of Birth', w: 124, date: true },
     { k: 'qual', label: 'Educational Qualification', w: 190 },
     { k: 'deptRef', label: 'Forest Dept.’s approval ref', w: 200 },
@@ -321,17 +321,21 @@
   function rowHtml(r, i, sl) {
     if (isBlank(r) && !r.id && !r.del) {
       return `<tr data-r="${i}" class="addrow" tabindex="0" aria-label="Add a volunteer"><td class="sl">${icon.plus}</td>
-        <td colspan="${COLS.length + 1}"><span class="addtxt">Add a volunteer</span> <span class="faint">Click here to fill the next one</span></td></tr>`;
+        <td colspan="${COLS.length}"><span class="addtxt">Add a volunteer</span> <span class="faint">Click here to fill the next one</span></td></tr>`;
     }
     const p = rowProblems(r), incomplete = !r.del && missingOf(r).length, tdc = c => {
       const ks = c.place ? ['placeType', 'placeName'] : c.duty ? ['duty', 'wdet'] : [c.k];
       const gap = incomplete && (c.place ? !r.placeType || (r.placeType !== 'Div HQ' && !String(r.placeName || '').trim()) : c.duty ? !r.duty || (r.duty === 'Others' && missingOf(r).includes('Work details')) : !String(r[c.k] || '').trim());
       const cl = [c.cls || '', ks.some(k => p[k]) ? 'bad' : '', ks.some(k => cellChanged(r, k)) && !r.del ? 'chg' : '', gap ? 'gap' : ''].join(' ').trim();
       const tip = ks.map(k => p[k]).filter(Boolean)[0], t = cellText(r, c);
-      return `<td class="${cl}" data-f="${fieldOf(c)}"${tip ? ` title="${esc(tip)}"` : t ? ` title="${esc(t)}"` : gap ? ' title="Missing: click to fill"' : ''}><div class="cv">${t ? esc(t) : gap ? '<span class="empty miss">missing</span>' : '<span class="empty">—</span>'}</div></td>`;
+      const txt = t ? esc(t) : gap ? '<span class="empty miss">missing</span>' : '<span class="empty">—</span>';
+      if (c.k === 'name') {   // the Edit button sits right after the name, so it stays in view when the sheet scrolls sideways
+        return `<td class="${cl}" data-f="name"${tip ? ` title="${esc(tip)}"` : ''}><div class="cv nmv"><span class="nmt">${txt}</span>
+          <button type="button" class="ebtn" data-e="${i}" aria-label="Edit ${esc(r.name || 'this volunteer')}">${r.del ? icon.undo + '<span>Removed</span>' : icon.edit + '<span>Edit</span>'}</button></div></td>`;
+      }
+      return `<td class="${cl}" data-f="${fieldOf(c)}"${tip ? ` title="${esc(tip)}"` : t ? ` title="${esc(t)}"` : gap ? ' title="Missing: click to fill"' : ''}><div class="cv">${txt}</div></td>`;
     };
-    return `<tr data-r="${i}" tabindex="0" class="${r.del ? 'del' : ''}${!r.id ? ' new' : ''}" aria-label="${esc(r.name || 'Volunteer')}: open to edit"><td class="sl${incomplete ? ' inc' : ''}"${incomplete ? ' title="Details missing"' : ''}>${sl}</td>${COLS.map(tdc).join('')}
-      <td class="act"><button class="ebtn" data-e="${i}" tabindex="-1" aria-hidden="true">${r.del ? icon.undo + '<span>Removed</span>' : icon.edit + '<span>Edit</span>'}</button></td></tr>`;
+    return `<tr data-r="${i}" tabindex="0" class="${r.del ? 'del' : ''}${!r.id ? ' new' : ''}" aria-label="${esc(r.name || 'Volunteer')}: open to edit"><td class="sl${incomplete ? ' inc' : ''}"${incomplete ? ' title="Details missing"' : ''}>${sl}</td>${COLS.map(tdc).join('')}</tr>`;
   }
   function drawSheet(focusId) {
     const filled = G.rows.filter(r => !r.del && !isBlank(r)).length;
@@ -356,8 +360,8 @@
         <button class="btn sm ghost" data-help>? <span class="hide-sm">How to fill</span></button>
       </div>
       <div class="grid-wrap" id="gridWrap"><div class="grid-title">List of Volunteers · ${esc(G.division)}</div>
-        <table class="grid" id="grid" style="width:${54 + 92 + COLS.reduce((a, c) => a + c.w, 0)}px"><colgroup><col style="width:54px">${COLS.map(c => `<col style="width:${c.w}px">`).join('')}<col style="width:92px"></colgroup>
-          <thead><tr><th class="sl">Sl No</th>${COLS.map(c => `<th class="${c.cls || ''}">${esc(c.label)}${c.req ? ' <span class="req">*</span>' : ''}</th>`).join('')}<th class="act"></th></tr></thead>
+        <table class="grid" id="grid" style="width:${54 + COLS.reduce((a, c) => a + c.w, 0)}px"><colgroup><col style="width:54px">${COLS.map(c => `<col style="width:${c.w}px">`).join('')}</colgroup>
+          <thead><tr><th class="sl">Sl No</th>${COLS.map(c => `<th class="${c.cls || ''}">${esc(c.label)}${c.req ? ' <span class="req">*</span>' : ''}</th>`).join('')}</tr></thead>
           <tbody>${G.rows.map((r, i) => rowHtml(r, i, r.del || isBlank(r) ? (r.del ? '—' : '') : ++sl)).join('')}</tbody></table></div>
       <div class="gridfoot"><span><i class="legend-sq" style="background:var(--chg)"></i>changed, not saved</span><span><i class="legend-sq" style="background:var(--bad);border-color:var(--danger)"></i>needs fixing</span>
         <span>· Click any row to open it and make changes.</span></div>`;
@@ -365,6 +369,7 @@
     const rowOf = e => e.target.closest('tbody tr[data-r]');
     grid.addEventListener('click', e => {
       const tr = rowOf(e); if (!tr) return;
+      if (e.target.closest('[data-e]')) { openPanel(+tr.dataset.r); return; }   // the Edit button: open at the top
       const td = e.target.closest('td[data-f]');
       openPanel(+tr.dataset.r, td ? td.dataset.f : null);
     });
