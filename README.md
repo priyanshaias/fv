@@ -19,14 +19,11 @@ FV is completely separate from UPMC2: it has its own repo, Apps Script project, 
   - tap-to-choose buttons for qualification, place of joining and main duty;
   - references, place names and duty details already used in the division offered as one-tap chips;
   - **Previous / Next** to move through the volunteers, and **Save** in the panel. **Esc** closes it.
-- **The sheet.** It has the columns of the circular: Sl No, Name, Date of Birth, Educational Qualification, Dept. approval ref, Directorate ref, Appointment order, Date of Joining, Present place (Div HQ / Range / Beat / Camp plus its name) and Nature of works. Circle and Division come from the choice already made.
-  - Type in cells. **Enter** moves down and **Tab** moves across.
-  - **Paste rows straight from Excel**. Both the circular's 12-column format and plain copied columns work.
-  - Dates are tidied to DD-MM-YYYY, so 1/7/25 becomes 01-07-2025.
-  - **Yellow** cells are changed but not saved. **Red** cells need fixing: a missing name or a wrong date.
-  - **Save** with the floppy-disk button or **Ctrl + S**, as often as you like. Unsaved changes are also kept on the device, so a closed tab or a power cut loses nothing.
-  - Removing a row (×) takes effect on Save. Press × again to undo.
-  - If two people save the same division, the second is warned. They can view the other person's list, download their own changes, or save over it.
+- **The sheet** shows the list in the circular's columns and cannot be typed into. Clicking any row, or any cell, opens that volunteer in the edit panel at that field; clicking a date cell opens the calendar. The last row, **Add a volunteer**, opens a new one.
+  - **Paste from Excel** opens a box for rows copied from an existing sheet. The circular's 12-column format and plain columns are both understood, a heading row is skipped, and a preview is shown before they are added.
+  - **Yellow** cells are changed but not saved; **red** ones need fixing (a missing name, a wrong date, or "Others" without the work written).
+  - **Save** with the floppy-disk button (in the toolbar or the panel) or **Ctrl + S**. Unsaved changes are also kept on the device, so a closed tab or a power cut loses nothing.
+  - If two people save the same division, the second is warned and can see the other list, download their own, or save over it.
 - **Download Excel** gives the division's list in the circular's column order.
 
 ## Dashboard (admins, `#/admin`)
