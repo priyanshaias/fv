@@ -24,6 +24,7 @@ FV is completely separate from UPMC2: it has its own repo, Apps Script project, 
   - **Yellow** cells are changed but not saved; **red** ones need fixing (a missing name, a wrong date, or "Others" without the work written).
   - **Save** with the floppy-disk button (in the toolbar or the panel) or **Ctrl + S**. Unsaved changes are also kept on the device, so a closed tab or a power cut loses nothing.
   - If two people save the same division, the second is warned and can see the other list, download their own, or save over it.
+- **Present place of posting** is either **Div HQ**, or a **Range** (its name typed in) and, within it, the **Range HQ**, a **Beat** or a **Camp** (name typed in). Names already used in the division are offered as chips. The sheet keeps three columns: Posted at, Range name, and Within the range (e.g. `Beat: Duttar`). Places saved in the earlier format ("Duttar Beat under Sajnekhali Wildlife Sanctuary Range") are converted by `convertPlaces()` (run once) and on reading.
 - **Download Excel** gives the division's list in the circular's column order.
 
 ## Dashboard (admins, `#/admin`)

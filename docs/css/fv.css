@@ -225,3 +225,4 @@ table.grid .cv.nmv .ebtn { flex: none; height: 28px; }
 .pn-foot { gap: 6px; }
 .pn-foot .state { font-size: 12.5px; white-space: nowrap; }
 .pn-foot .miss-btn { padding: 0 8px; }
+.pf-sub { display: grid; gap: 14px; margin-left: 4px; padding-left: 14px; border-left: 3px solid var(--primary-soft); }

@@ -26,13 +26,16 @@
     { k: 'dirRef', label: 'Forest Directorate’s Ref no sent to the Circle in Charge', w: 210 },
     { k: 'apptRef', label: 'Appointment Order issued by / reference', w: 210 },
     { k: 'doj', label: 'Date of Joining', w: 124, date: true },
-    { k: 'place', label: 'Present place of Joining (Div HQ / Range / Beat / Camp)', w: 250, place: true },
+    { k: 'place', label: 'Present place of posting (Div HQ, or Range › Range HQ / Beat / Camp)', w: 330, place: true },
     { k: 'works', label: 'Nature of Works assigned', w: 430, duty: true },
   ];
   // what is edited on screen; the sheet keeps duty and details together in one column ("Others: Mahut of elephant Champa")
-  const FIELDS = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'duty', 'wdet'];
-  const SENT = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'works'];
-  const PLACES = ['Div HQ', 'Range', 'Beat', 'Camp', 'Other'];
+  // what is edited on screen; the sheet keeps "Within the range" in one column ("Beat: Duttar") and duty with its details in another
+  const FIELDS = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'subType', 'subName', 'duty', 'wdet'];
+  const SENT = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'placeSub', 'works'];
+  // place of posting: Div HQ, or a Range and, inside it, the Range HQ, a Beat or a Camp
+  const PLACES = ['Div HQ', 'Range'];
+  const SUBS = ['Range HQ', 'Beat', 'Camp'];
   const QUALS = ['Below Class VIII', 'Class VIII', 'Madhyamik (Class X)', 'Higher Secondary (Class XII)', 'ITI / Diploma', 'Graduate', 'Post Graduate'];
   // the main duties used for DLs / CDLs; anything else is "Others" with the work written out
   const DUTIES = ['Cleaning/Sweeping/Maintenance', 'Nursery Operations', 'Timber Depot', 'Driver', 'Mali/Gardener',
@@ -56,14 +59,46 @@
   function missingOf(r) {
     const m = [], has = k => String(r[k] || '').trim();
     [['name', 'Name'], ['dob', 'Date of birth'], ['qual', 'Qualification'], ['deptRef', 'Dept. approval ref'], ['dirRef', 'Directorate ref'],
-      ['apptRef', 'Appointment order'], ['doj', 'Date of joining'], ['placeType', 'Place of joining']].forEach(([k, l]) => { if (!has(k)) m.push(l); });
-    if (has('placeType') && r.placeType !== 'Div HQ' && !has('placeName')) m.push('Name of the ' + (r.placeType === 'Other' ? 'place' : r.placeType.toLowerCase()));
+      ['apptRef', 'Appointment order'], ['doj', 'Date of joining'], ['placeType', 'Place of posting']].forEach(([k, l]) => { if (!has(k)) m.push(l); });
+    if (r.placeType === 'Range') {
+      if (!has('placeName')) m.push('Range name');
+      if (!has('subType')) m.push('Range HQ / Beat / Camp');
+      else if (r.subType !== 'Range HQ' && !has('subName')) m.push('Name of the ' + r.subType.toLowerCase());
+    }
     if (!has('duty')) m.push('Nature of works');
     else if (r.duty === 'Others' && (VAGUE.test(r.wdet || '') || has('wdet').length < 10)) m.push('Work details');
     return m;
   }
   /** Same rule for a row as the server stores it (duty and details in one "works" value). */
-  const missingOfSaved = r => missingOf(splitWorks(Object.assign({}, r)));
+  const missingOfSaved = r => missingOf(fromServer(Object.assign({}, r)));
+  /** Places saved in the earlier format (Beat / Camp / Range + "X under Y Range") become Range + Range HQ / Beat / Camp. Same rule as newPlace_() in Code.gs. */
+  function newPlace(o) {
+    const t = o.placeType;
+    if (t === 'Div HQ' || (t === 'Range' && o.placeSub) || ['Range', 'Beat', 'Camp', 'Other'].indexOf(t) < 0) return o;
+    const name = String(o.placeName || '').replace(/\s+/g, ' ').trim(), m = /^(.*?)\s+under\s+(?:the\s+)?(.+?)\s*(?:range)?\s*$/i.exec(name);
+    const tc = s => s.toLowerCase().replace(/(^|[\s(\-\/])([a-z])/g, (a, b, c) => b + c.toUpperCase()).replace(/\bHq\b/g, 'HQ').replace(/\bWls\b/g, 'WLS');
+    o.placeType = 'Range';
+    if (m) { const what = tc(m[1]).replace(/\s+Beat$/i, ''); o.placeName = tc(m[2]); o.placeSub = t === 'Camp' ? 'Camp: ' + what : t === 'Other' ? '' : 'Beat: ' + what; }
+    else if (t === 'Range') { o.placeName = name; o.placeSub = ''; }
+    else if (t === 'Beat' || t === 'Camp') { o.placeName = ''; o.placeSub = name ? t + ': ' + name : ''; }
+    else { o.placeName = ''; o.placeSub = name; }
+    return o;
+  }
+  function splitPlace(r) {
+    if (r.placeSub === undefined && r.subType !== undefined) return r;   // already split (a draft)
+    newPlace(r);
+    const sub = String(r.placeSub || '').trim(), m = /^(Beat|Camp)(?::\s*(.*))?$/.exec(sub);
+    delete r.placeSub;
+    if (sub === 'Range HQ') { r.subType = 'Range HQ'; r.subName = ''; }
+    else if (m) { r.subType = m[1]; r.subName = (m[2] || '').trim(); }
+    else { r.subType = ''; r.subName = sub; }
+    return r;
+  }
+  const joinSub = r => r.placeType !== 'Range' ? '' : r.subType === 'Range HQ' ? 'Range HQ' : r.subType ? (String(r.subName || '').trim() ? r.subType + ': ' + String(r.subName).trim() : r.subType) : String(r.subName || '').trim();
+  const rangeLabel = n => (n = String(n || '').trim()) ? (/\brange$/i.test(n) ? n : n + ' Range') : '';
+  const placeText = r => r.placeType === 'Div HQ' ? 'Div HQ' : r.placeType === 'Range' ? [rangeLabel(r.placeName) || 'Range (name missing)', joinSub(r)].filter(Boolean).join(' · ') : '';
+  /** A row as the server sends it → the fields edited on screen. */
+  const fromServer = r => splitPlace(splitWorks(r));
   const joinWorks = r => { const d = String(r.duty || '').trim(), t = String(r.wdet || '').trim(); return d && t ? d + ': ' + t : d || t; };
 
   /* ---------------- small helpers ---------------- */
@@ -285,13 +320,13 @@
     const d = await guard(() => API.call('load', { circle, division }));
     if (location.hash !== `#/d/${enc(circle)}/${enc(division)}`) return;
     G = { circle, division, base: d.ver.n, ver: d.ver, saved: {}, rows: [], orderChanged: false, saving: false };
-    d.rows.forEach(r => G.saved[r.id] = splitWorks(r));
+    d.rows.forEach(r => G.saved[r.id] = fromServer(r));
     G.rows = d.rows.map(r => Object.assign({ key: newKey() }, r));
     // unsaved work from an earlier visit on this device
     const dr = store.get(draftKey());
     let restored = null;
     if (dr && dr.rows && dr.rows.some(r => !isBlank(r) || r.del)) {
-      if (dr.base === G.base) { G.rows = dr.rows.map(r => splitWorks(Object.assign({}, r, { key: r.key || newKey() }))); restored = 'same'; }
+      if (dr.base === G.base) { G.rows = dr.rows.map(r => fromServer(Object.assign({}, r, { key: r.key || newKey() }))); restored = 'same'; }
       else restored = 'stale';
     }
     padRows();
@@ -311,7 +346,7 @@
 
   // The sheet only shows the list. Every change is made in the edit panel, which opens on a click anywhere in a row.
   function cellText(r, c) {
-    if (c.place) return [r.placeType, r.placeName].filter(Boolean).join(': ');
+    if (c.place) return placeText(r);
     if (c.duty) return joinWorks(r);
     return r[c.k] || '';
   }
@@ -322,8 +357,8 @@
         <td colspan="${COLS.length}"><span class="addtxt">Add a volunteer</span> <span class="faint">Click here to fill the next one</span></td></tr>`;
     }
     const p = rowProblems(r), incomplete = !r.del && missingOf(r).length, tdc = c => {
-      const ks = c.place ? ['placeType', 'placeName'] : c.duty ? ['duty', 'wdet'] : [c.k];
-      const gap = incomplete && (c.place ? !r.placeType || (r.placeType !== 'Div HQ' && !String(r.placeName || '').trim()) : c.duty ? !r.duty || (r.duty === 'Others' && missingOf(r).includes('Work details')) : !String(r[c.k] || '').trim());
+      const ks = c.place ? ['placeType', 'placeName', 'subType', 'subName'] : c.duty ? ['duty', 'wdet'] : [c.k];
+      const gap = incomplete && (c.place ? missingOf(r).some(x => /Place of posting|Range|Name of the (beat|camp)/.test(x)) : c.duty ? !r.duty || (r.duty === 'Others' && missingOf(r).includes('Work details')) : !String(r[c.k] || '').trim());
       const cl = [c.cls || '', ks.some(k => p[k]) ? 'bad' : '', ks.some(k => cellChanged(r, k)) && !r.del ? 'chg' : '', gap ? 'gap' : ''].join(' ').trim();
       const tip = ks.map(k => p[k]).filter(Boolean)[0], t = cellText(r, c);
       const txt = t ? esc(t) : gap ? '<span class="empty miss">missing</span>' : '<span class="empty">—</span>';
@@ -394,9 +429,9 @@
   function csvRows(rows) {
     return [['Sl No', 'Name of Forest Volunteer Engaged', 'Date of Birth', 'Educational Qualification', 'Circle', 'Division', 'Forest Dept.\'s approval ref',
       'Forest Directorate\'s Ref no sent to the Circle in Charge', 'Appointment Order issued by/ reference', 'Date of Joining',
-      'Present place of Joining (Div HQ/ Range/ Beat/ Camp)', 'Nature of Works assigned']]
+      'Present place of posting (Div HQ / Range › Range HQ / Beat / Camp)', 'Nature of Works assigned']]
       .concat(rows.map((r, i) => [i + 1, r.name, r.dob, r.qual, G.circle, G.division, r.deptRef, r.dirRef, r.apptRef, r.doj,
-        [r.placeType, r.placeName].filter(Boolean).join(': '), joinWorks(r)]));
+        placeText(r), joinWorks(r)]));
   }
 
   /* -- editing -- */
@@ -433,9 +468,9 @@
   const THIS_YEAR = new Date().getFullYear();
   const DATE_OPTS = { dob: { from: 1950, to: THIS_YEAR - 14, start: 2000 }, doj: { from: 2000, to: THIS_YEAR + 1, start: THIS_YEAR } };
   /** Values already used for a field in this division (most used first), so a reference typed once is one tap away for the next volunteer. */
-  function used(k, cur, n) {
+  function used(k, cur, n, only) {
     const c = {};
-    G.rows.forEach(r => { const v = String(r[k] || '').trim(); if (v && !r.del && v !== String(cur || '').trim()) c[v] = (c[v] || 0) + 1; });
+    G.rows.forEach(r => { const v = String(r[k] || '').trim(); if (v && !r.del && v !== String(cur || '').trim() && (!only || only(r))) c[v] = (c[v] || 0) + 1; });
     return Object.keys(c).sort((a, b) => c[b] - c[a]).slice(0, n || 3);
   }
   const chips = (k, vals, label) => vals.length ? `<div class="pf-use"><span class="faint">${label || 'Use'}:</span>${vals.map(v => `<button type="button" class="use-chip" data-set="${k}" data-v="${esc(v)}" title="${esc(v)}">${esc(v)}</button>`).join('')}</div>` : '';
@@ -481,7 +516,6 @@
   function setField(k, v, typing) {
     const r = G.rows[P.i]; if (!r) return;
     r[k] = v;
-    if (k === 'placeType' && v === 'Div HQ' && !r.placeName) r.placeName = '';
     clearTimeout(P.t); P.t = setTimeout(() => { padRows(); redraw(); markRow(); setState(); }, typing ? 250 : 0);
     saveDraft();
     if (!typing) drawPanel(); else refreshPanelChecks();
@@ -506,8 +540,8 @@
     const list = G.rows.map((r, i) => i).filter(i => !G.rows[i].del && !isBlank(G.rows[i]) && missingOf(G.rows[i]).length);
     if (!list.length) { toast('Every volunteer has all details. Nothing is missing.'); return; }
     const j = list.find(i => i >= (from == null || from < 0 ? 0 : from)) ?? list[0];
-    const first = { 'Date of birth': 'dob', 'Date of joining': 'doj', 'Qualification': 'qual', 'Place of joining': 'placeType', 'Nature of works': 'duty', 'Work details': 'wdet',
-      'Dept. approval ref': 'deptRef', 'Directorate ref': 'dirRef', 'Appointment order': 'apptRef', 'Name': 'name' }[missingOf(G.rows[j])[0]] || 'placeName';
+    const first = { 'Date of birth': 'dob', 'Date of joining': 'doj', 'Qualification': 'qual', 'Place of posting': 'placeType', 'Range name': 'placeName', 'Range HQ / Beat / Camp': 'subType', 'Nature of works': 'duty', 'Work details': 'wdet',
+      'Dept. approval ref': 'deptRef', 'Directorate ref': 'dirRef', 'Appointment order': 'apptRef', 'Name': 'name' }[missingOf(G.rows[j])[0]] || 'subName';
     openPanel(j, first);
   }
   function pnState() {
@@ -598,9 +632,14 @@
         </section>
         <section class="pn-sec"><h3>Joining</h3>
           ${dateField('doj', 'Date of joining', r)}
-          <div class="pf"><label>Present place of joining</label>${pick('placeType', PLACES)}
-            ${r.placeType && r.placeType !== 'Div HQ' ? `<input id="pf_placeName" data-f="placeName" class="mt" value="${esc(r.placeName || '')}" placeholder="Name of the ${esc(r.placeType === 'Other' ? 'place' : r.placeType.toLowerCase())}" autocomplete="off">
-            ${chips('placeName', used('placeName', r.placeName, 5))}` : ''}</div>
+          <div class="pf"><label>Present place of posting</label>${pick('placeType', PLACES)}</div>
+          ${r.placeType === 'Range' ? `<div class="pf-sub">
+            <div class="pf"><label for="pf_placeName">Range name</label>
+              <input id="pf_placeName" data-f="placeName" value="${esc(r.placeName || '')}" placeholder="e.g. Sajnekhali Wildlife Sanctuary" autocomplete="off">
+              ${chips('placeName', used('placeName', r.placeName, 5))}</div>
+            <div class="pf"><label>Within the range</label>${pick('subType', SUBS)}
+              ${r.subType === 'Beat' || r.subType === 'Camp' ? `<input id="pf_subName" data-f="subName" class="mt" value="${esc(r.subName || '')}" placeholder="Name of the ${r.subType.toLowerCase()}${r.subType === 'Beat' ? ', e.g. Duttar or Pakhirala HQ' : ', e.g. Kendo Protection Camp'}" autocomplete="off">
+              ${chips('subName', used('subName', r.subName, 5, x => x.subType === r.subType && (!r.placeName || x.placeName === r.placeName)))}` : ''}</div></div>` : ''}
         </section>
         <section class="pn-sec"><h3>Nature of works assigned</h3>
           <div class="pf ${p.duty ? 'bad' : ''}"><label>Main duty</label>${pick('duty', DUTIES, true)}<div class="pf-err" data-err="duty">${esc(p.duty || '')}</div></div>
@@ -638,13 +677,18 @@
       toast(`Fix the red cell${bad.length > 1 ? 's' : ''} first: ${Object.values(p)[0]}.`, true); return;
     }
     if (!dirty() && force !== true) { setState('clean', 'Nothing to save. All changes are saved.'); return; }
+    // the place of posting changed format; an older script would drop the Beat / Camp part, so wait for the updated one
+    if (META && !META.placeV) {
+      await meta(true);
+      if (!META.placeV) { setState('err', 'Saving paused'); toast('The portal is being updated. Your changes are kept on this device; please press Save again in a few minutes.', true); return; }
+    }
     const sent = G.rows.filter(r => !r.del && !isBlank(r));
     const open = P.i >= 0 ? G.rows[P.i] : null;
     G.saving = true; setState('saving');
     let res;
     try {
       res = await API.call('save', { circle: G.circle, division: G.division, base: G.base, force: force === true,
-        rows: sent.map(r => SENT.reduce((o, k) => (o[k] = k === 'works' ? joinWorks(r) : String(r[k] || '').trim(), o), { id: r.id, key: r.key })), operator: op() });
+        rows: sent.map(r => SENT.reduce((o, k) => (o[k] = k === 'works' ? joinWorks(r) : k === 'placeSub' ? joinSub(r) : k === 'placeName' && r.placeType !== 'Range' ? '' : String(r[k] || '').trim(), o), { id: r.id, key: r.key })), operator: op() });
     } catch (e) {
       G.saving = false; setState('err', 'Not saved. ' + (e.message || '')); toast('Not saved: ' + (e.message || 'please try again.'), true);
       if (e.auth) { toast('Your sign-in has expired. Your changes are kept on this device. Sign in again and press Save.', true); setTimeout(() => { go('#/'); route(); }, 1800); }
@@ -652,7 +696,7 @@
     }
     G.saving = false;
     if (res.conflict) { setState('err', 'Not saved yet'); conflict(res); return; }
-    G.saved = {}; res.rows.forEach(r => G.saved[r.id] = splitWorks(r));
+    G.saved = {}; res.rows.forEach(r => G.saved[r.id] = fromServer(r));
     G.rows = res.rows.map(r => Object.assign({ key: newKey() }, r));
     G.base = res.ver.n; G.ver = res.ver; G.orderChanged = false;
     store.del(draftKey());
@@ -746,8 +790,8 @@
       const rows = d.rows.filter(r => A.circle === 'all' || r.circle === A.circle).sort((a, b) => (a.circle + a.division).localeCompare(b.circle + b.division) || (+a.sl - +b.sl));
       download(`Forest Volunteers${A.circle === 'all' ? '' : ' - ' + A.circle}.csv`, [['Sl No', 'Circle', 'Division', 'Name of Forest Volunteer Engaged', 'Date of Birth', 'Educational Qualification',
         'Forest Dept.\'s approval ref', 'Forest Directorate\'s Ref no sent to the Circle in Charge', 'Appointment Order issued by/ reference', 'Date of Joining',
-        'Present place of Joining', 'Name of the place', 'Nature of Works assigned', 'Details complete', 'Details missing', 'Last Updated On', 'Last Updated By', 'Volunteer ID']]
-        .concat(rows.map((r, i) => { const m = missingOfSaved(r); return [i + 1, r.circle, r.division, r.name, r.dob, r.qual, r.deptRef, r.dirRef, r.apptRef, r.doj, r.placeType, r.placeName, r.works, m.length ? 'No' : 'Yes', m.join(', '), r.updOn, r.updBy, r.id]; })));
+        'Posted at (Div HQ / Range)', 'Range name', 'Within the range (Range HQ / Beat / Camp)', 'Nature of Works assigned', 'Details complete', 'Details missing', 'Last Updated On', 'Last Updated By', 'Volunteer ID']]
+        .concat(rows.map((r, i) => { const m = missingOfSaved(r); return [i + 1, r.circle, r.division, r.name, r.dob, r.qual, r.deptRef, r.dirRef, r.apptRef, r.doj, r.placeType, r.placeName, r.placeSub, r.works, m.length ? 'No' : 'Yes', m.join(', '), r.updOn, r.updBy, r.id]; })));
     };
     $('#dlLog').onclick = () => download('Forest Volunteers - change log.csv', [['When', 'Saved by', 'Designation', 'Mobile', 'Username', 'Circle', 'Division', 'Volunteer ID', 'Volunteer', 'Action', 'Field', 'Old value', 'New value']]
       .concat(d.log.map(l => [l.on, l.by, l.desig, l.mobile, l.username, l.circle, l.division, l.vid, l.vname, l.action, l.field, l.old, l.value])));

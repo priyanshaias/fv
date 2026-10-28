@@ -16,12 +16,14 @@ const COLS = [
   ['name', 'Name of Forest Volunteer Engaged'], ['dob', 'Date of Birth'], ['qual', 'Educational Qualification'],
   ['deptRef', "Forest Dept.'s approval ref"], ['dirRef', "Forest Directorate's Ref no sent to the Circle in Charge"],
   ['apptRef', 'Appointment Order issued by / reference'], ['doj', 'Date of Joining'],
-  ['placeType', 'Present place of Joining (Div HQ / Range / Beat / Camp)'], ['placeName', 'Name of the place'],
+  ['placeType', 'Posted at (Div HQ / Range)'], ['placeName', 'Range name'], ['placeSub', 'Within the range (Range HQ / Beat / Camp)'],
   ['works', 'Nature of Works assigned'], ['updOn', 'Last Updated On'], ['updBy', 'Last Updated By'],
 ];
 const LABEL = COLS.reduce((a, c) => (a[c[0]] = c[1], a), {});
 // what a division fills, in the order of the on-screen table
-const FIELDS = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'works'];
+const FIELDS = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'placeSub', 'works'];
+// headings used by earlier versions of the sheet, so their data is still found
+const OLD_HEADERS = { placeType: ['Present place of Joining (Div HQ / Range / Beat / Camp)'], placeName: ['Name of the place'] };
 const DATES = ['dob', 'doj'];
 const LOG_HEADERS = ['When', 'Username', 'Saved by', 'Designation', 'Mobile', 'Circle', 'Division', 'Volunteer ID', 'Volunteer', 'Action', 'Field', 'Old value', 'New value'];
 
@@ -193,19 +195,73 @@ function circles_() {
   return out;
 }
 
+/** Rows of the Volunteers tab. Columns are found by their heading, so adding or moving a column never shifts data. */
 function readAll_() {
   const v = tab_(CONFIG.TAB).getDataRange().getValues(), rows = [];
+  const head = (v[0] || []).map(h => String(h).trim());
+  const at = COLS.map(c => [c[1]].concat(OLD_HEADERS[c[0]] || []).map(h => head.indexOf(h)).filter(i => i >= 0)[0]);
   for (let r = 1; r < v.length; r++) {
     const o = {};
-    COLS.forEach((c, i) => { o[c[0]] = c[0] === 'updOn' ? fmtTs_(v[r][i]) : fmt_(v[r][i]); });
-    if (o.id) rows.push(o);
+    COLS.forEach((c, j) => { const x = at[j] == null ? '' : v[r][at[j]]; o[c[0]] = c[0] === 'updOn' ? fmtTs_(x) : fmt_(x); });
+    if (o.id) rows.push(newPlace_(o));
   }
   return rows;
 }
 
+/**
+ * Place of posting is "Div HQ", or a Range with "Range HQ", "Beat: <name>" or "Camp: <name>" inside it.
+ * Entries saved in the earlier format (Beat / Camp / Range + "X under Y Range") are converted here.
+ */
+function newPlace_(o) {
+  const t = o.placeType;
+  if (t === 'Div HQ' || (t === 'Range' && o.placeSub)) return o;
+  if (['Range', 'Beat', 'Camp', 'Other'].indexOf(t) < 0) return o;
+  const name = String(o.placeName || '').replace(/\s+/g, ' ').trim();
+  const m = /^(.*?)\s+under\s+(?:the\s+)?(.+?)\s*(?:range)?\s*$/i.exec(name);
+  const tc = s => s.toLowerCase().replace(/(^|[\s(\-\/])([a-z])/g, (a, b, c) => b + c.toUpperCase()).replace(/\bHq\b/g, 'HQ').replace(/\bWls\b/g, 'WLS');
+  o.placeType = 'Range';
+  if (m) {
+    const what = tc(m[1]).replace(/\s+Beat$/i, '');
+    o.placeName = tc(m[2]);
+    o.placeSub = t === 'Camp' ? 'Camp: ' + what : t === 'Beat' || /\bHQ$/.test(what) ? 'Beat: ' + what : t === 'Range' ? 'Beat: ' + what : '';
+  } else if (t === 'Range') { o.placeName = name; o.placeSub = ''; }
+  else if (t === 'Beat' || t === 'Camp') { o.placeName = ''; o.placeSub = name ? t + ': ' + name : ''; }
+  else { o.placeName = ''; o.placeSub = name; }
+  return o;
+}
+
+/**
+ * Run once from the editor after updating the script: rewrites places saved in the earlier format into the new columns
+ * (Posted at, Range name, Within the range) and writes each change to the Change Log. Running it again changes nothing.
+ */
+function convertPlaces() {
+  const lock = LockService.getScriptLock(); lock.waitLock(25000);
+  try {
+    const sh = tab_(CONFIG.TAB), v = sh.getDataRange().getValues(), head = (v[0] || []).map(h => String(h).trim());
+    const col = (k, names) => names.map(h => head.indexOf(h)).filter(i => i >= 0)[0];
+    const ci = { id: col('id', ['Volunteer ID']), t: col('t', ['Posted at (Div HQ / Range)'].concat(OLD_HEADERS.placeType)), n: col('n', ['Range name'].concat(OLD_HEADERS.placeName)) };
+    const before = {};
+    v.slice(1).forEach(r => { if (r[ci.id]) before[fmt_(r[ci.id])] = { placeType: fmt_(r[ci.t]), placeName: fmt_(r[ci.n]) }; });
+    const rows = readAll_(), when = now_(), log = [], touched = {};
+    rows.forEach(r => {
+      const b = before[r.id] || {}, changes = [['placeType', b.placeType, r.placeType], ['placeName', b.placeName, r.placeName], ['placeSub', '', r.placeSub]].filter(x => (x[1] || '') !== (x[2] || ''));
+      if (!changes.length || (b.placeType === r.placeType && head.indexOf('Within the range (Range HQ / Beat / Camp)') >= 0)) return;
+      changes.forEach(x => log.push([when, 'script', 'GS', 'Administrator', '', r.circle, r.division, r.id, r.name, 'Edited', LABEL[x[0]], x[1] || '', x[2] || '']));
+      touched[r.circle + '|' + r.division] = [r.circle, r.division];
+    });
+    writeAll_(rows);
+    if (log.length) { const lg = tab_(CONFIG.LOG); lg.getRange(lg.getLastRow() + 1, 1, log.length, LOG_HEADERS.length).setNumberFormat('@').setValues(log); }
+    // anyone with a division open is asked to reload before saving over the converted places
+    Object.keys(touched).forEach(k => { const [c, d] = touched[k], ver = ver_(c, d); setVer_(c, d, { n: ver.n + 1, on: when, by: 'GS (place format update)' }); });
+    Logger.log('Places converted: ' + log.length + ' changes in ' + Object.keys(touched).length + ' division(s).');
+  } finally { lock.releaseLock(); }
+}
+
 function writeAll_(rows) {
-  const sh = tab_(CONFIG.TAB), n = COLS.length, last = sh.getLastRow();
-  if (last > 1) sh.getRange(2, 1, last - 1, n).clearContent();
+  const sh = tab_(CONFIG.TAB), n = COLS.length, last = sh.getLastRow(), width = Math.max(n, sh.getLastColumn());
+  // headings follow COLS (the data below is written in the same order)
+  sh.getRange(1, 1, 1, width).clearContent(); sh.getRange(1, 1, 1, n).setValues([COLS.map(c => c[1])]).setFontWeight('bold').setWrap(true);
+  if (last > 1) sh.getRange(2, 1, last - 1, width).clearContent();
   if (!rows.length) return;
   const values = rows.map(o => COLS.map(c => DATES.indexOf(c[0]) >= 0 && o[c[0]] ? parseDate_(o[c[0]]) : (o[c[0]] == null ? '' : o[c[0]])));
   // plain text everywhere (so a reference like "12/2024" stays as typed), real dates in the two date columns
@@ -228,7 +284,10 @@ function pub_(r) { const o = { id: r.id }; FIELDS.forEach(k => o[k] = r[k] || ''
 function complete_(r) {
   const has = k => String(r[k] || '').trim() !== '';
   if (!['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'works'].every(has)) return false;
-  if (r.placeType !== 'Div HQ' && !has('placeName')) return false;
+  if (r.placeType !== 'Div HQ') {
+    if (r.placeType !== 'Range' || !has('placeName') || !has('placeSub')) return false;
+    if (r.placeSub !== 'Range HQ' && !/^(Beat|Camp):\s*\S/.test(r.placeSub)) return false;
+  }
   const m = /^Others(?::\s*(.*))?$/.exec(String(r.works).trim());
   if (m && (!m[1] || m[1].trim().length < 10 || /^\s*(do|d\.o\.?|various|misc\.?|miscellaneous|other|others|field work|field duty|forestry work|general|all work|-)?\s*$/i.test(m[1]))) return false;
   return true;
@@ -239,7 +298,7 @@ function meta_(body, user) {
   readAll_().forEach(r => { const k = r.circle + '|' + r.division; counts[k] = (counts[k] || 0) + 1; if (complete_(r)) complete[k] = (complete[k] || 0) + 1; });
   const props = PropertiesService.getScriptProperties().getProperties();
   Object.keys(props).forEach(k => { if (k.indexOf('ver|') === 0) { const v = JSON.parse(props[k]); saved[k.slice(4)] = { on: v.on, by: v.by }; } });
-  return { circles: circles_(), counts, complete, saved, user };
+  return { circles: circles_(), counts, complete, saved, user, placeV: 2 };   // placeV: the website saves the new place columns only to this version
 }
 
 function load_(body) {
