@@ -53,6 +53,18 @@
     else { r.duty = ''; r.wdet = ''; }
     return r;
   }
+  /** A volunteer counts as "added" only when every detail is filled. Returns the labels of what is still missing. */
+  function missingOf(r) {
+    const m = [], has = k => String(r[k] || '').trim();
+    [['name', 'Name'], ['dob', 'Date of birth'], ['qual', 'Qualification'], ['deptRef', 'Dept. approval ref'], ['dirRef', 'Directorate ref'],
+      ['apptRef', 'Appointment order'], ['doj', 'Date of joining'], ['placeType', 'Place of joining']].forEach(([k, l]) => { if (!has(k)) m.push(l); });
+    if (has('placeType') && r.placeType !== 'Div HQ' && !has('placeName')) m.push('Name of the ' + (r.placeType === 'Other' ? 'place' : r.placeType.toLowerCase()));
+    if (!has('duty')) m.push('Nature of works');
+    else if (r.duty === 'Others' && (VAGUE.test(r.wdet || '') || has('wdet').length < 10)) m.push('Work details');
+    return m;
+  }
+  /** Same rule for a row as the server stores it (duty and details in one "works" value). */
+  const missingOfSaved = r => missingOf(splitWorks(Object.assign({}, r)));
   const joinWorks = r => { const d = String(r.duty || '').trim(), t = String(r.wdet || '').trim(); return d && t ? d + ': ' + t : d || t; };
 
   /* ---------------- small helpers ---------------- */
@@ -119,6 +131,7 @@
         <li><b>Click any row</b> (or <b>Add volunteer</b>). A panel opens with a calendar for dates and buttons for qualification, place and duty. Use <b>Next ›</b> to go to the next volunteer.</li>
         <li><b>Already have the list in Excel?</b> Press <b>Paste from Excel</b>, paste the rows into the box, and check them.</li>
         <li><b>Save often</b> with the ${icon.save.replace('<svg', '<svg style="width:15px;height:15px;vertical-align:-2px;stroke:currentColor;fill:none;stroke-width:2"')} <b>Save</b> button or <span class="kbd">Ctrl</span> + <span class="kbd">S</span>. You can come back any time and continue.</li>
+        <li><b>A volunteer is counted as added only when every detail is filled.</b> You can save part-filled entries; cells marked <b>missing</b> show what is left. Press <b>Details missing</b> at the top to go to the next one.</li>
         <li><b>Yellow cells</b> are changed but not saved yet. <b>Red cells</b> need fixing (a missing name or a wrong date).</li>
         <li><b>Dates</b> are typed as DD-MM-YYYY, for example 01-07-2025.</li>
         <li><b>Nature of works:</b> choose the main duty from the list. If none fits, choose <b>Others</b> and write the actual work, for example “Mahut of elephant Champa”.</li>
@@ -207,6 +220,8 @@
     renderWho(); return META;
   }
   const divCount = (c, d) => (META.counts || {})[c + '|' + d] || 0;
+  const divDone = (c, d) => META.complete ? (META.complete[c + '|' + d] || 0) : null;
+  const doneLine = (n, done) => done == null ? `${n} entered` : `<b class="ok-n">${done} added</b>${n - done ? ` · <span class="miss-n">${n - done} details missing</span>` : ''}`;
   const divSaved = (c, d) => (META.saved || {})[c + '|' + d];
   function tile(title, sub, n, extra, href, i) {
     return `<a class="tile" href="${href}" style="animation-delay:${Math.min(i, 20) * 30}ms;text-decoration:none">
@@ -220,7 +235,8 @@
     const ld = app.querySelector('.loader'); if (ld) ld.remove();
     app.querySelector('.tiles').innerHTML = m.circles.map((c, i) => {
       const n = c.divisions.reduce((a, d) => a + divCount(c.circle, d), 0), started = c.divisions.filter(d => divCount(c.circle, d)).length;
-      return tile(c.circle, c.office, n, `${started} of ${c.divisions.length} divisions entered`, `#/c/${enc(c.circle)}`, i);
+      const done = META.complete ? c.divisions.reduce((a, d) => a + divDone(c.circle, d), 0) : null;
+      return tile(c.circle, c.office, done == null ? n : done, `${n ? doneLine(n, done) + ' · ' : ''}${started} of ${c.divisions.length} divisions started`, `#/c/${enc(c.circle)}`, i);
     }).join('');
   }
   async function renderDivisions(circle) {
@@ -230,8 +246,8 @@
     app.innerHTML = `<div class="crumbs"><a href="#/circles">All circles</a><span class="sep">/</span><span>${esc(circle)}</span></div>
       <div class="head"><div><h1 class="page-title">${esc(circle)} circle.</h1><p class="page-sub">Choose your division.</p></div></div>
       <div class="tiles">${c.divisions.map((d, i) => {
-        const s = divSaved(circle, d);
-        return tile(d, 'Division', divCount(circle, d), s ? 'Saved ' + esc(shortWhen(s.on)) : '<span class="not-started">Not started</span>', `#/d/${enc(circle)}/${enc(d)}`, i);
+        const s = divSaved(circle, d), n = divCount(circle, d), done = divDone(circle, d);
+        return tile(d, 'Division', done == null ? n : done, n ? doneLine(n, done) + (s ? ' · saved ' + esc(shortWhen(s.on)) : '') : '<span class="not-started">Not started</span>', `#/d/${enc(circle)}/${enc(d)}`, i);
       }).join('')}</div>`;
   }
 
@@ -305,13 +321,14 @@
       return `<tr data-r="${i}" class="addrow" tabindex="0" aria-label="Add a volunteer"><td class="sl">${icon.plus}</td>
         <td colspan="${COLS.length + 1}"><span class="addtxt">Add a volunteer</span> <span class="faint">Click here to fill the next one</span></td></tr>`;
     }
-    const p = rowProblems(r), tdc = c => {
+    const p = rowProblems(r), incomplete = !r.del && missingOf(r).length, tdc = c => {
       const ks = c.place ? ['placeType', 'placeName'] : c.duty ? ['duty', 'wdet'] : [c.k];
-      const cl = [c.cls || '', ks.some(k => p[k]) ? 'bad' : '', ks.some(k => cellChanged(r, k)) && !r.del ? 'chg' : ''].join(' ').trim();
+      const gap = incomplete && (c.place ? !r.placeType || (r.placeType !== 'Div HQ' && !String(r.placeName || '').trim()) : c.duty ? !r.duty || (r.duty === 'Others' && missingOf(r).includes('Work details')) : !String(r[c.k] || '').trim());
+      const cl = [c.cls || '', ks.some(k => p[k]) ? 'bad' : '', ks.some(k => cellChanged(r, k)) && !r.del ? 'chg' : '', gap ? 'gap' : ''].join(' ').trim();
       const tip = ks.map(k => p[k]).filter(Boolean)[0], t = cellText(r, c);
-      return `<td class="${cl}" data-f="${fieldOf(c)}"${tip ? ` title="${esc(tip)}"` : t ? ` title="${esc(t)}"` : ''}><div class="cv">${t ? esc(t) : '<span class="empty">—</span>'}</div></td>`;
+      return `<td class="${cl}" data-f="${fieldOf(c)}"${tip ? ` title="${esc(tip)}"` : t ? ` title="${esc(t)}"` : gap ? ' title="Missing: click to fill"' : ''}><div class="cv">${t ? esc(t) : gap ? '<span class="empty miss">missing</span>' : '<span class="empty">—</span>'}</div></td>`;
     };
-    return `<tr data-r="${i}" tabindex="0" class="${r.del ? 'del' : ''}${!r.id ? ' new' : ''}" aria-label="${esc(r.name || 'Volunteer')}: open to edit"><td class="sl">${sl}</td>${COLS.map(tdc).join('')}
+    return `<tr data-r="${i}" tabindex="0" class="${r.del ? 'del' : ''}${!r.id ? ' new' : ''}" aria-label="${esc(r.name || 'Volunteer')}: open to edit"><td class="sl${incomplete ? ' inc' : ''}"${incomplete ? ' title="Details missing"' : ''}>${sl}</td>${COLS.map(tdc).join('')}
       <td class="act"><button class="ebtn" data-e="${i}" tabindex="-1" aria-hidden="true">${r.del ? icon.undo + '<span>Removed</span>' : icon.edit + '<span>Edit</span>'}</button></td></tr>`;
   }
   function drawSheet(focusId) {
@@ -319,6 +336,13 @@
     let sl = 0;
     app.innerHTML = `<div class="crumbs"><a href="#/circles">All circles</a><span class="sep">/</span><a href="#/c/${enc(G.circle)}">${esc(G.circle)}</a><span class="sep">/</span><span>${esc(G.division)}</span></div>
       <div class="head"><div><h1 class="page-title">${esc(G.division)}</h1><p class="page-sub">${esc(G.circle)} circle · ${filled} volunteer${filled === 1 ? '' : 's'}${G.ver.on ? ` · last saved ${esc(shortWhen(G.ver.on))} by ${esc(G.ver.by)}` : ' · not saved yet'}</p></div></div>
+      ${(() => {
+        const list = G.rows.filter(r => !r.del && !isBlank(r)), done = list.filter(r => !missingOf(r).length).length, miss = list.length - done;
+        return `<div class="tally">
+          <div class="tl ok"><span>Total volunteers added</span><b>${done}</b><small>all details complete</small></div>
+          <button type="button" class="tl miss${miss ? '' : ' none'}" id="tallyMiss" ${miss ? '' : 'disabled'}><span>Details missing</span><b>${miss}</b><small>${miss ? 'press to fill the next one ›' : 'nothing missing'}</small></button>
+          <p class="tl-note">A volunteer is counted as <b>added</b> only when every detail is filled. You can save a part-filled entry and complete it later.</p></div>`;
+      })()}
       <div id="sheetNote" class="notice hidden" style="margin:0 0 14px"></div>
       <div class="sheetbar">
         <button class="btn primary save" id="saveBtn" title="Save (Ctrl + S)">${icon.save} Save</button>
@@ -349,6 +373,7 @@
     });
     $('#addOne').onclick = () => { padRows(); openPanel(G.rows.findIndex(r => isBlank(r) && !r.del && !r.id)); };
     $('#pasteBtn').onclick = openPaste;
+    const tm = $('#tallyMiss'); if (tm) tm.onclick = () => { const after = G.rows.findIndex((r, i) => i > P.i && !r.del && !isBlank(r) && missingOf(r).length); openNextMissing(after); };
     $('#saveBtn').onclick = save;
     $('#dlBtn').onclick = () => download(`${G.division} - Forest Volunteers.csv`, csvRows(G.rows.filter(r => !r.del && !isBlank(r))));
     setState();
@@ -515,8 +540,24 @@
     const r = G.rows[P.i], p = panelProblems(r);
     document.querySelectorAll('#panel [data-err]').forEach(e => { const m = p[e.dataset.err]; e.textContent = m || ''; e.closest('.pf').classList.toggle('bad', !!m); });
     const h = $('#pnTitle'); if (h) h.textContent = r.name || 'New volunteer';
+    const pm = $('#pnMiss'); if (pm) pm.innerHTML = missHtml(r);
     const a = $('#pnAge'); if (a) a.textContent = ageOf(r.dob);
     pnState();
+  }
+  function missHtml(r) {
+    if (isBlank(r)) return '';
+    const m = missingOf(r);
+    return m.length ? `<div class="pn-miss"><b>Details missing (${m.length}):</b> ${m.map(esc).join(', ')}. <span class="faint">Not counted as added until complete.</span></div>`
+      : '<div class="pn-done">✓ All details complete. Counted as added.</div>';
+  }
+  /** Opens the next volunteer whose details are missing (from `from`, wrapping round). */
+  function openNextMissing(from) {
+    const list = G.rows.map((r, i) => i).filter(i => !G.rows[i].del && !isBlank(G.rows[i]) && missingOf(G.rows[i]).length);
+    if (!list.length) { toast('Every volunteer has all details. Nothing is missing.'); return; }
+    const j = list.find(i => i >= (from == null || from < 0 ? 0 : from)) ?? list[0];
+    const first = { 'Date of birth': 'dob', 'Date of joining': 'doj', 'Qualification': 'qual', 'Place of joining': 'placeType', 'Nature of works': 'duty', 'Work details': 'wdet',
+      'Dept. approval ref': 'deptRef', 'Directorate ref': 'dirRef', 'Appointment order': 'apptRef', 'Name': 'name' }[missingOf(G.rows[j])[0]] || 'placeName';
+    openPanel(j, first);
   }
   function pnState() {
     const s = $('#pnState'); if (!s) return;
@@ -570,6 +611,7 @@
     if (d.clear != null) { const k = P.cal; P.cal = null; P.view = null; setField(k, ''); return; }
     if (d.calclose != null) { P.cal = null; P.view = null; drawPanel(); return; }
     if (t.id === 'pnSave') return save();
+    if (t.id === 'pnNextMiss') { P.cal = null; P.view = null; return openNextMissing(P.i + 1); }
     if (t.id === 'pnDel') { toggleDel(P.i); if (G.rows[P.i] && G.rows[P.i] === r) drawPanel(); else closePanel(); return; }
   }
   document.addEventListener('change', e => {
@@ -589,7 +631,7 @@
     const pick = (k, opts, wide) => `<div class="opts${wide ? ' wide' : ''}" role="radiogroup">${opts.map(o => `<button type="button" role="radio" aria-checked="${r[k] === o}" class="opt${r[k] === o ? ' on' : ''}" data-set="${k}" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;
     el.innerHTML = `
       <div class="pn-head"><div class="grow"><div class="faint">${r.id || !isBlank(r) ? `Volunteer ${pos || filled + 1} of ${Math.max(filled, pos)}` : 'New volunteer'} · ${esc(G.division)}</div>
-        <h2 id="pnTitle">${esc(r.name || 'New volunteer')}</h2>${r.del ? '<span class="pill attn">Will be removed when you save</span>' : ''}</div>
+        <h2 id="pnTitle">${esc(r.name || 'New volunteer')}</h2>${r.del ? '<span class="pill attn">Will be removed when you save</span>' : `<div id="pnMiss">${missHtml(r)}</div>`}</div>
         <button class="x" id="pn_close" aria-label="Close">×</button></div>
       <div class="pn-body">
         <section class="pn-sec"><h3>Volunteer</h3>
@@ -620,6 +662,7 @@
       <div class="pn-foot">
         <button type="button" class="btn sm" data-nav="-1" ${P.i > 0 ? '' : 'disabled'}>‹ Previous</button>
         <button type="button" class="btn sm" data-nav="1" ${P.i < G.rows.length - 1 ? '' : 'disabled'}>Next ›</button>
+        ${G.rows.some((x, j) => j !== P.i && !x.del && !isBlank(x) && missingOf(x).length) ? '<button type="button" class="btn sm ghost miss-btn" id="pnNextMiss">Next with missing ›</button>' : ''}
         <span class="sp"></span><span class="state" id="pnState"></span>
         <button type="button" class="btn primary save" id="pnSave" title="Save (Ctrl + S)">${icon.save} Save</button></div>`;
     el.querySelector('.pn-body').scrollTop = keep;
@@ -662,6 +705,7 @@
     G.rows = res.rows.map(r => Object.assign({ key: newKey() }, r));
     G.base = res.ver.n; G.ver = res.ver; G.orderChanged = false;
     store.del(draftKey());
+    if (META && META.complete) META.complete[G.circle + '|' + G.division] = res.rows.filter(r => !missingOfSaved(r).length).length;
     if (META) { META.counts[G.circle + '|' + G.division] = res.rows.length; if (res.changes) META.saved[G.circle + '|' + G.division] = { on: res.ver.on, by: res.ver.by }; }
     padRows(); redraw();
     const nt = $('#sheetNote'); if (nt) nt.classList.add('hidden');   // "unsaved changes are back" no longer applies
@@ -699,12 +743,15 @@
   function drawAdmin(m, d) {
     const allDivs = [].concat(...m.circles.map(c => c.divisions.map(dv => ({ circle: c.circle, division: dv }))));
     const started = allDivs.filter(x => divCount(x.circle, x.division)).length;
+    const doneBy = {}; d.rows.forEach(r => { if (!missingOfSaved(r).length) { const k = r.circle + '|' + r.division; doneBy[k] = (doneBy[k] || 0) + 1; } });
+    const doneAll = Object.values(doneBy).reduce((a, b) => a + b, 0);
     const today = (() => { const t = new Date(); return `${String(t.getDate()).padStart(2, '0')}-${String(t.getMonth() + 1).padStart(2, '0')}-${t.getFullYear()}`; })();
     const savesToday = new Set(d.log.filter(l => l.on.startsWith(today)).map(l => l.on + l.division)).size;
     app.innerHTML = `<div class="head"><div><h1 class="page-title">Dashboard.</h1><p class="page-sub">Volunteers entered by each division, and every change made. Saves go in directly; nothing waits for approval.</p></div>
         <span class="sp"></span>${d.sheetUrl ? `<a class="btn soft" href="${esc(d.sheetUrl)}" target="_blank" rel="noopener">${icon.sheet} Open Google Sheet</a>` : ''}</div>
       <div class="kpis">
-        <div class="kpi"><span>Volunteers entered</span><b>${d.rows.length}</b></div>
+        <div class="kpi"><span>Total volunteers added</span><b style="color:var(--prelims-ink)">${doneAll}</b><small class="faint">all details complete</small></div>
+        <div class="kpi"><span>Details missing</span><b style="color:var(--optional-ink)">${d.rows.length - doneAll}</b><small class="faint">saved, not complete</small></div>
         <div class="kpi"><span>Divisions entered</span><b>${started} <small style="font-size:15px;color:var(--text-subtle);font-weight:600">of ${allDivs.length}</small></b></div>
         <div class="kpi"><span>Changes recorded</span><b>${d.logTotal}</b></div>
         <div class="kpi"><span>Saves today</span><b>${savesToday}</b></div>
@@ -713,7 +760,7 @@
         <div class="tablecard"><div class="tc-head"><h2>Divisions</h2><span class="sp"></span>
             <select id="admCircle" class="btn sm" aria-label="Circle"><option value="all">All circles</option>${m.circles.map(c => `<option${A.circle === c.circle ? ' selected' : ''}>${esc(c.circle)}</option>`).join('')}</select>
             <button class="btn sm" id="dlAll">${icon.down} All volunteers (Excel)</button></div>
-          <div class="tscroll"><table class="dtable"><thead><tr><th>Division</th><th class="r">Volunteers</th><th>Last saved</th><th>By</th></tr></thead><tbody id="divBody"></tbody></table></div></div>
+          <div class="tscroll"><table class="dtable"><thead><tr><th>Division</th><th class="r">Added</th><th class="r">Details missing</th><th>Last saved</th><th>By</th></tr></thead><tbody id="divBody"></tbody></table></div></div>
         <div class="tablecard"><div class="tc-head"><h2>Change log</h2>
             <div class="seg" id="actSeg">${['all', 'Added', 'Edited', 'Removed'].map(a => `<button data-a="${a}" class="${A.act === a ? 'on' : ''}">${a === 'all' ? 'All' : a}</button>`).join('')}</div>
             <span class="sp"></span><label class="adm-search"><input id="logQ" placeholder="Search name, division, person…" value="${esc(A.q)}" aria-label="Search the change log"></label>
@@ -723,9 +770,9 @@
       </div>`;
     const drawDivs = () => {
       $('#divBody').innerHTML = m.circles.filter(c => A.circle === 'all' || c.circle === A.circle).map(c =>
-        `<tr class="plainrow"><td colspan="4" class="circle-h">${esc(c.circle)} <span class="faint">· ${c.divisions.reduce((a, dv) => a + divCount(c.circle, dv), 0)} volunteers</span></td></tr>` +
-        c.divisions.map(dv => { const s = divSaved(c.circle, dv), n = divCount(c.circle, dv);
-          return `<tr data-go="#/d/${enc(c.circle)}/${enc(dv)}"><td class="tn">${esc(dv)}</td><td class="r num">${n}</td><td>${s ? esc(shortWhen(s.on)) : '<span class="not-started">Not started</span>'}</td><td>${s ? esc(s.by) : ''}</td></tr>`; }).join('')).join('');
+        `<tr class="plainrow"><td colspan="5" class="circle-h">${esc(c.circle)} <span class="faint">· ${c.divisions.reduce((a, dv) => a + (doneBy[c.circle + '|' + dv] || 0), 0)} added · ${c.divisions.reduce((a, dv) => a + divCount(c.circle, dv) - (doneBy[c.circle + '|' + dv] || 0), 0)} details missing</span></td></tr>` +
+        c.divisions.map(dv => { const s = divSaved(c.circle, dv), n = divCount(c.circle, dv), dn = doneBy[c.circle + '|' + dv] || 0;
+          return `<tr data-go="#/d/${enc(c.circle)}/${enc(dv)}"><td class="tn">${esc(dv)}</td><td class="r num">${dn}</td><td class="r num">${n - dn ? `<span class="miss-n">${n - dn}</span>` : '0'}</td><td>${s ? esc(shortWhen(s.on)) : '<span class="not-started">Not started</span>'}</td><td>${s ? esc(s.by) : ''}</td></tr>`; }).join('')).join('');
     };
     const drawLog = () => {
       const q = A.q.toLowerCase().trim();
@@ -748,8 +795,8 @@
       const rows = d.rows.filter(r => A.circle === 'all' || r.circle === A.circle).sort((a, b) => (a.circle + a.division).localeCompare(b.circle + b.division) || (+a.sl - +b.sl));
       download(`Forest Volunteers${A.circle === 'all' ? '' : ' - ' + A.circle}.csv`, [['Sl No', 'Circle', 'Division', 'Name of Forest Volunteer Engaged', 'Date of Birth', 'Educational Qualification',
         'Forest Dept.\'s approval ref', 'Forest Directorate\'s Ref no sent to the Circle in Charge', 'Appointment Order issued by/ reference', 'Date of Joining',
-        'Present place of Joining', 'Name of the place', 'Nature of Works assigned', 'Last Updated On', 'Last Updated By', 'Volunteer ID']]
-        .concat(rows.map((r, i) => [i + 1, r.circle, r.division, r.name, r.dob, r.qual, r.deptRef, r.dirRef, r.apptRef, r.doj, r.placeType, r.placeName, r.works, r.updOn, r.updBy, r.id])));
+        'Present place of Joining', 'Name of the place', 'Nature of Works assigned', 'Details complete', 'Details missing', 'Last Updated On', 'Last Updated By', 'Volunteer ID']]
+        .concat(rows.map((r, i) => { const m = missingOfSaved(r); return [i + 1, r.circle, r.division, r.name, r.dob, r.qual, r.deptRef, r.dirRef, r.apptRef, r.doj, r.placeType, r.placeName, r.works, m.length ? 'No' : 'Yes', m.join(', '), r.updOn, r.updBy, r.id]; })));
     };
     $('#dlLog').onclick = () => download('Forest Volunteers - change log.csv', [['When', 'Saved by', 'Designation', 'Mobile', 'Username', 'Circle', 'Division', 'Volunteer ID', 'Volunteer', 'Action', 'Field', 'Old value', 'New value']]
       .concat(d.log.map(l => [l.on, l.by, l.desig, l.mobile, l.username, l.circle, l.division, l.vid, l.vname, l.action, l.field, l.old, l.value])));

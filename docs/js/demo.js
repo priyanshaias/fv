@@ -43,14 +43,17 @@
   function db() { try { const d = JSON.parse(localStorage.getItem(KEY) || 'null'); if (d) return d; } catch (e) {} const d = seed(); put(d); return d; }
   function put(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {} }
   const pub = r => FIELDS.reduce((o, k) => (o[k] = r[k] || '', o), { id: r.id });
+  // same rule as complete_() in Code.gs
+  const done = r => ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'works'].every(k => String(r[k] || '').trim())
+    && (r.placeType === 'Div HQ' || String(r.placeName || '').trim()) && !/^Others(:\s*.{0,9})?$/.test(String(r.works).trim());
   const dateOk = s => !s || /^\d{2}-\d{2}-\d{4}$/.test(s);
 
   const H = {
     meta(b, user) {
-      const d = db(), counts = {}, saved = {};
-      d.rows.forEach(r => { const k = r.circle + '|' + r.division; counts[k] = (counts[k] || 0) + 1; });
+      const d = db(), counts = {}, complete = {}, saved = {};
+      d.rows.forEach(r => { const k = r.circle + '|' + r.division; counts[k] = (counts[k] || 0) + 1; if (done(r)) complete[k] = (complete[k] || 0) + 1; });
       Object.keys(d.ver).forEach(k => saved[k] = { on: d.ver[k].on, by: d.ver[k].by });
-      return { circles: CIRCLES, counts, saved, user: { name: user.name, isAdmin: true, username: 'demo' } };
+      return { circles: CIRCLES, counts, complete, saved, user: { name: user.name, isAdmin: true, username: 'demo' } };
     },
     load(b) {
       const d = db();

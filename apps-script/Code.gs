@@ -224,12 +224,22 @@ function pub_(r) { const o = { id: r.id }; FIELDS.forEach(k => o[k] = r[k] || ''
 
 /* ============================================================ actions */
 
+/** A volunteer counts as "added" only when every detail is filled (same rule as missingOf() in the website). */
+function complete_(r) {
+  const has = k => String(r[k] || '').trim() !== '';
+  if (!['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'works'].every(has)) return false;
+  if (r.placeType !== 'Div HQ' && !has('placeName')) return false;
+  const m = /^Others(?::\s*(.*))?$/.exec(String(r.works).trim());
+  if (m && (!m[1] || m[1].trim().length < 10 || /^\s*(do|d\.o\.?|various|misc\.?|miscellaneous|other|others|field work|field duty|forestry work|general|all work|-)?\s*$/i.test(m[1]))) return false;
+  return true;
+}
+
 function meta_(body, user) {
-  const counts = {}, saved = {};
-  readAll_().forEach(r => { const k = r.circle + '|' + r.division; counts[k] = (counts[k] || 0) + 1; });
+  const counts = {}, complete = {}, saved = {};
+  readAll_().forEach(r => { const k = r.circle + '|' + r.division; counts[k] = (counts[k] || 0) + 1; if (complete_(r)) complete[k] = (complete[k] || 0) + 1; });
   const props = PropertiesService.getScriptProperties().getProperties();
   Object.keys(props).forEach(k => { if (k.indexOf('ver|') === 0) { const v = JSON.parse(props[k]); saved[k.slice(4)] = { on: v.on, by: v.by }; } });
-  return { circles: circles_(), counts, saved, user };
+  return { circles: circles_(), counts, complete, saved, user };
 }
 
 function load_(body) {

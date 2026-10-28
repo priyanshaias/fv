@@ -12,6 +12,7 @@ Live at **https://fv.forestwb.in** (GitHub Pages, `docs/CNAME`).
 FV is completely separate from UPMC2: it has its own repo, Apps Script project, Google Sheet and sessions. Only the usernames and passwords are the same, because the same hashes are copied into its private `Config.local.gs`.
 
 ## What the operator sees
+- **Added vs details missing.** A volunteer counts as **added** only when every detail is filled: name, date of birth, qualification, the three references, date of joining, place of joining (and its name unless Div HQ), and nature of works (with the work written out for Others). Part-filled entries can be saved and completed later. Each division shows **Total volunteers added** and **Details missing** at the top; pressing **Details missing** opens the next incomplete volunteer at the first empty field. Incomplete rows have an orange mark and their empty cells say *missing*.
 - **Circle → Division**, with the number of volunteers entered and when the division was last saved.
 - **Nature of works** uses the DL / CDL duty list (Cleaning, Nursery, Timber depot, Driver, Mali, Protection & patrolling, Human-animal conflict, Night guard) plus **Others**, which needs the actual work written out. Duty and details are kept together in one sheet column, e.g. `Others: Mahut of elephant Champa`.
 - **Edit panel.** **Edit** at the end of any row, or **Add volunteer**, opens a panel for one volunteer at a time:
