@@ -25,12 +25,32 @@
     { k: 'apptRef', label: 'Appointment Order issued by / reference', w: 210 },
     { k: 'doj', label: 'Date of Joining', w: 124, date: true },
     { k: 'place', label: 'Present place of Joining (Div HQ / Range / Beat / Camp)', w: 250, place: true },
-    { k: 'works', label: 'Nature of Works assigned', w: 230, list: 'worksList' },
+    { k: 'works', label: 'Nature of Works assigned', w: 430, duty: true },
   ];
-  const FIELDS = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'works'];
+  // what is edited on screen; the sheet keeps duty and details together in one column ("Others: Mahut of elephant Champa")
+  const FIELDS = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'duty', 'wdet'];
+  const SENT = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'works'];
   const PLACES = ['Div HQ', 'Range', 'Beat', 'Camp', 'Other'];
   const QUALS = ['Below Class VIII', 'Class VIII', 'Madhyamik (Class X)', 'Higher Secondary (Class XII)', 'ITI / Diploma', 'Graduate', 'Post Graduate'];
-  const WORKS = ['Patrolling', 'Elephant drive', 'Fire watch', 'Nursery and plantation', 'Office work, data entry', 'Anti-poaching camp', 'Eco-tourism', 'Check post duty'];
+  // the main duties used for DLs / CDLs; anything else is "Others" with the work written out
+  const DUTIES = ['Cleaning/Sweeping/Maintenance', 'Nursery Operations', 'Timber Depot', 'Driver', 'Mali/Gardener',
+    'Forest Protection and Patrolling', 'Human-Animal Conflict Management', 'Night Guard/Security', 'Others'];
+  const VAGUE = /^\s*(do|d\.o\.?|various|misc\.?|miscellaneous|other|others|field work|field duty|forestry work|general|all work|-)?\s*$/i;
+  // free text pasted from Excel → the closest duty (else Others, keeping the text)
+  const GUESS = [[/elephant|hulla|conflict|depredation|wild ?animal|rescue/i, 'Human-Animal Conflict Management'], [/patrol|protect|anti.?poach|check ?post|fire|watch ?tower|beat duty/i, 'Forest Protection and Patrolling'],
+    [/nurs[ae]ry|seedling|plantation|pltn/i, 'Nursery Operations'], [/garden|\bmali\b|\bpark\b|lawn/i, 'Mali/Gardener'], [/driv/i, 'Driver'],
+    [/night|security|chowkidar|darwan|guard/i, 'Night Guard/Security'], [/depot|timber/i, 'Timber Depot'], [/clean|sweep|maintenance|safai/i, 'Cleaning/Sweeping/Maintenance']];
+  function splitWorks(r) {
+    const w = String(r.works == null ? '' : r.works).trim(), m = /^([^:]+):\s*(.*)$/.exec(w);
+    delete r.works;
+    if (r.duty !== undefined && !w) return r;                           // already split (a draft)
+    if (DUTIES.includes(w)) { r.duty = w; r.wdet = ''; }
+    else if (m && DUTIES.includes(m[1].trim())) { r.duty = m[1].trim(); r.wdet = m[2]; }
+    else if (w) { const g = GUESS.find(x => x[0].test(w)); r.duty = g ? g[1] : 'Others'; r.wdet = w; }
+    else { r.duty = ''; r.wdet = ''; }
+    return r;
+  }
+  const joinWorks = r => { const d = String(r.duty || '').trim(), t = String(r.wdet || '').trim(); return d && t ? d + ': ' + t : d || t; };
 
   /* ---------------- small helpers ---------------- */
   function toast(msg, err) { const t = $('#toast'); t.textContent = msg; t.className = 'toast on' + (err ? ' err' : ''); clearTimeout(t._t); t._t = setTimeout(() => t.className = 'toast', 4200); }
@@ -98,6 +118,7 @@
         <li><b>Save often</b> with the ${icon.save.replace('<svg', '<svg style="width:15px;height:15px;vertical-align:-2px;stroke:currentColor;fill:none;stroke-width:2"')} <b>Save</b> button or <span class="kbd">Ctrl</span> + <span class="kbd">S</span>. You can come back any time and continue.</li>
         <li><b>Yellow cells</b> are changed but not saved yet. <b>Red cells</b> need fixing (a missing name or a wrong date).</li>
         <li><b>Dates</b> are typed as DD-MM-YYYY, for example 01-07-2025.</li>
+        <li><b>Nature of works:</b> choose the main duty from the list. If none fits, choose <b>Others</b> and write the actual work, for example “Mahut of elephant Champa”.</li>
         <li>To remove a volunteer, press × at the end of the row, then Save. Press it again to undo.</li>
       </ol>
       <p class="faint">Every save is recorded with your name and designation. Your sign-in lasts 6 hours.</p>`);
@@ -231,6 +252,9 @@
     if (r.del || isBlank(r)) return {};
     const p = {};
     if (!String(r.name || '').trim()) p.name = 'Name is needed';
+    const det = String(r.wdet || '').trim();
+    if (!r.duty && det) p.duty = 'Choose the nature of work';
+    if (r.duty === 'Others' && (VAGUE.test(det) || det.length < 10)) p.wdet = 'For “Others”, write the actual work, e.g. Mahut of elephant Champa (not “various” or “misc”)';
     ['dob', 'doj'].forEach(k => { if (r[k] && normDate(r[k]) === null) p[k] = 'Not a date. Type DD-MM-YYYY'; });
     return p;
   }
@@ -243,13 +267,13 @@
     const d = await guard(() => API.call('load', { circle, division }));
     if (location.hash !== `#/d/${enc(circle)}/${enc(division)}`) return;
     G = { circle, division, base: d.ver.n, ver: d.ver, saved: {}, rows: [], orderChanged: false, saving: false };
-    d.rows.forEach(r => G.saved[r.id] = r);
+    d.rows.forEach(r => G.saved[r.id] = splitWorks(r));
     G.rows = d.rows.map(r => Object.assign({ key: newKey() }, r));
     // unsaved work from an earlier visit on this device
     const dr = store.get(draftKey());
     let restored = null;
     if (dr && dr.rows && dr.rows.some(r => !isBlank(r) || r.del)) {
-      if (dr.base === G.base) { G.rows = dr.rows.map(r => Object.assign({}, r, { key: r.key || newKey() })); restored = 'same'; }
+      if (dr.base === G.base) { G.rows = dr.rows.map(r => splitWorks(Object.assign({}, r, { key: r.key || newKey() }))); restored = 'same'; }
       else restored = 'stale';
     }
     padRows();
@@ -273,11 +297,15 @@
       return `<div class="place"><select ${at('placeType')}><option value=""></option>${PLACES.map(p => `<option${r.placeType === p ? ' selected' : ''}>${p}</option>`).join('')}</select>
         <input ${at('placeName')} value="${v('placeName')}" placeholder="${r.placeType === 'Div HQ' ? '' : 'name'}" autocomplete="off"></div>`;
     }
+    if (c.duty) {
+      return `<div class="place duty"><select ${at('duty')}><option value=""></option>${DUTIES.map(p => `<option${r.duty === p ? ' selected' : ''}>${esc(p)}</option>`).join('')}</select>
+        <input ${at('wdet')} value="${v('wdet')}" placeholder="${r.duty === 'Others' ? 'write the work (needed)' : 'details (optional)'}" autocomplete="off"></div>`;
+    }
     return `<input ${at(c.k)} value="${v(c.k)}"${c.date ? ' placeholder="DD-MM-YYYY" inputmode="numeric"' : ''}${c.list ? ` list="${c.list}"` : ''} autocomplete="off">`;
   }
   function rowHtml(r, i, sl) {
     const p = rowProblems(r), tdc = c => {
-      const ks = c.place ? ['placeType', 'placeName'] : [c.k];
+      const ks = c.place ? ['placeType', 'placeName'] : c.duty ? ['duty', 'wdet'] : [c.k];
       const cl = [c.cls || '', ks.some(k => p[k]) ? 'bad' : '', ks.some(k => cellChanged(r, k)) && !r.del ? 'chg' : ''].join(' ').trim();
       const tip = ks.map(k => p[k]).filter(Boolean)[0];
       return `<td class="${cl}"${tip ? ` title="${esc(tip)}"` : ''}>${cellHtml(r, i, c)}</td>`;
@@ -305,8 +333,7 @@
           <tbody>${G.rows.map((r, i) => rowHtml(r, i, r.del || isBlank(r) ? (r.del ? '—' : '') : ++sl)).join('')}</tbody></table></div>
       <div class="gridfoot"><span><i class="legend-sq" style="background:var(--chg)"></i>changed, not saved</span><span><i class="legend-sq" style="background:var(--bad);border-color:var(--danger)"></i>needs fixing</span>
         <span>· Paste straight from Excel: copy the rows there, click a Name cell here, press <span class="kbd">Ctrl</span> + <span class="kbd">V</span>.</span></div>
-      <datalist id="qualList">${QUALS.map(q => `<option value="${esc(q)}">`).join('')}</datalist>
-      <datalist id="worksList">${WORKS.map(q => `<option value="${esc(q)}">`).join('')}</datalist>`;
+      <datalist id="qualList">${QUALS.map(q => `<option value="${esc(q)}">`).join('')}</datalist>`;
     const grid = $('#grid');
     grid.addEventListener('input', onInput);
     grid.addEventListener('change', onChange);
@@ -334,7 +361,7 @@
       'Forest Directorate\'s Ref no sent to the Circle in Charge', 'Appointment Order issued by/ reference', 'Date of Joining',
       'Present place of Joining (Div HQ/ Range/ Beat/ Camp)', 'Nature of Works assigned']]
       .concat(rows.map((r, i) => [i + 1, r.name, r.dob, r.qual, G.circle, G.division, r.deptRef, r.dirRef, r.apptRef, r.doj,
-        [r.placeType, r.placeName].filter(Boolean).join(': '), r.works]));
+        [r.placeType, r.placeName].filter(Boolean).join(': '), joinWorks(r)]));
   }
 
   /* -- editing -- */
@@ -374,6 +401,7 @@
     const i = +t.dataset.r, r = G.rows[i], wasBlank = isBlank(r);
     r[t.dataset.k] = t.value;
     refreshCell(t);
+    if (t.dataset.k === 'duty') { padRows(); redraw(t.id); setState(); saveDraft(); return; }
     if (wasBlank !== isBlank(r)) {           // a new row started (or emptied): renumber and keep enough blank rows below
       padRows();
       const id = t.id, pos = t.selectionStart; redraw(id);
@@ -438,7 +466,8 @@
           const m = /^(div(?:ision)?\.?\s*hq|hq|range|beat|camp)\b[\s:,\-–/]*(.*)$/i.exec(v);
           if (m) { r.placeType = /hq/i.test(m[1]) ? 'Div HQ' : m[1][0].toUpperCase() + m[1].slice(1).toLowerCase(); r.placeName = m[2]; }
           else r.placeName = v;
-        } else if (k === 'dob' || k === 'doj') { const d = normDate(v); r[k] = d === null ? v : d; }
+        } else if (k === 'works') { r.works = v; r.duty = undefined; splitWorks(r); }
+        else if (k === 'dob' || k === 'doj') { const d = normDate(v); r[k] = d === null ? v : d; }
         else r[k] = v;
       });
       i++; n++;
@@ -463,7 +492,7 @@
     let res;
     try {
       res = await API.call('save', { circle: G.circle, division: G.division, base: G.base, force: force === true,
-        rows: sent.map(r => FIELDS.reduce((o, k) => (o[k] = String(r[k] || '').trim(), o), { id: r.id, key: r.key })), operator: op() });
+        rows: sent.map(r => SENT.reduce((o, k) => (o[k] = k === 'works' ? joinWorks(r) : String(r[k] || '').trim(), o), { id: r.id, key: r.key })), operator: op() });
     } catch (e) {
       G.saving = false; setState('err', 'Not saved. ' + (e.message || '')); toast('Not saved: ' + (e.message || 'please try again.'), true);
       if (e.auth) { toast('Your sign-in has expired. Your changes are kept on this device. Sign in again and press Save.', true); setTimeout(() => { go('#/'); route(); }, 1800); }
@@ -471,7 +500,7 @@
     }
     G.saving = false;
     if (res.conflict) { setState('err', 'Not saved yet'); conflict(res); return; }
-    G.saved = {}; res.rows.forEach(r => G.saved[r.id] = r);
+    G.saved = {}; res.rows.forEach(r => G.saved[r.id] = splitWorks(r));
     G.rows = res.rows.map(r => Object.assign({ key: newKey() }, r));
     G.base = res.ver.n; G.ver = res.ver; G.orderChanged = false;
     store.del(draftKey());

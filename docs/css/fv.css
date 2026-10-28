@@ -52,6 +52,7 @@ table.grid td.bad { box-shadow: inset 0 0 0 2px var(--danger); }
 table.grid td.bad, table.grid td.bad input { background: var(--bad); }
 table.grid .place { display: flex; }
 table.grid .place select { width: 92px; flex: none; border-right: 1px dashed var(--grid-line); }
+table.grid .place.duty select { width: 250px; }
 table.grid tr.new .sl { color: var(--prelims-ink); font-weight: 700; }
 table.grid tr.del td:not(.act) { opacity: .45; }
 table.grid tr.del input { text-decoration: line-through; }

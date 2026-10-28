@@ -27,13 +27,13 @@
       doj: '0' + (1 + i % 9) + '-07-2025', placeType: place, placeName: pname, works, updOn: on, updBy: by }));
     const rows = [].concat(
       mk('Central', 'Bankura (N)', [
-        ['Ratan Mandi', '14-03-1998', 'Higher Secondary (Class XII)', 'Range', 'Beliatore', 'Elephant drive and patrolling'],
-        ['Sumana Kisku', '02-11-2000', 'Graduate', 'Div HQ', '', 'Office work, data entry'],
-        ['Bapi Lohar', '21-08-1996', 'Madhyamik (Class X)', 'Beat', 'Barjora', 'Nursery and plantation'],
+        ['Ratan Mandi', '14-03-1998', 'Higher Secondary (Class XII)', 'Range', 'Beliatore', 'Human-Animal Conflict Management'],
+        ['Sumana Kisku', '02-11-2000', 'Graduate', 'Div HQ', '', 'Others: Office work and data entry in DFO office'],
+        ['Bapi Lohar', '21-08-1996', 'Madhyamik (Class X)', 'Beat', 'Barjora', 'Nursery Operations'],
       ], 'Demo operator (Head clerk, Bankura (N) Dn.)', '27-10-2026 16:12:40'),
       mk('Hill', 'Darjeeling', [
-        ['Pemba Sherpa', '09-05-1999', 'Graduate', 'Camp', 'Tonglu', 'Anti-poaching camp'],
-        ['Anita Rai', '30-01-2001', 'Higher Secondary (Class XII)', 'Range', 'Ghoom', 'Fire watch'],
+        ['Pemba Sherpa', '09-05-1999', 'Graduate', 'Camp', 'Tonglu', 'Forest Protection and Patrolling: anti-poaching camp'],
+        ['Anita Rai', '30-01-2001', 'Higher Secondary (Class XII)', 'Range', 'Ghoom', 'Forest Protection and Patrolling: fire watch'],
       ], 'Demo operator (UDC, Darjeeling Dn.)', '28-10-2026 10:05:11'));
     const log = rows.map(r => ({ on: r.updOn, username: 'user', by: r.updBy.split(' (')[0], desig: (r.updBy.split(' (')[1] || '').replace(')', ''), mobile: '',
       circle: r.circle, division: r.division, vid: r.id, vname: r.name, action: 'Added', field: LABEL.name, old: '', value: r.name })).reverse();
