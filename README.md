@@ -7,6 +7,8 @@ GitHub Pages (docs/)  ──►  Apps Script API (apps-script/Code.gs)  ──�
   sign in · sheet · dashboard     checks the sign-in, reads/writes          Volunteers · Change Log · Lists
 ```
 
+Live at **https://fv.forestwb.in** (GitHub Pages, `docs/CNAME`).
+
 FV is completely separate from UPMC2: it has its own repo, Apps Script project, Google Sheet and sessions. Only the usernames and passwords are the same, because the same hashes are copied into its private `Config.local.gs`.
 
 ## What the operator sees
