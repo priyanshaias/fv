@@ -21,7 +21,6 @@ FV is completely separate from UPMC2: it has its own repo, Apps Script project, 
   - references, place names and duty details already used in the division offered as one-tap chips;
   - **Previous / Next** to move through the volunteers, and **Save** in the panel. **Esc** closes it.
 - **The sheet** shows the list in the circular's columns and cannot be typed into. Clicking any row, or any cell, opens that volunteer in the edit panel at that field; clicking a date cell opens the calendar. The last row, **Add a volunteer**, opens a new one.
-  - **Paste from Excel** opens a box for rows copied from an existing sheet. The circular's 12-column format and plain columns are both understood, a heading row is skipped, and a preview is shown before they are added.
   - **Yellow** cells are changed but not saved; **red** ones need fixing (a missing name, a wrong date, or "Others" without the work written).
   - **Save** with the floppy-disk button (in the toolbar or the panel) or **Ctrl + S**. Unsaved changes are also kept on the device, so a closed tab or a power cut loses nothing.
   - If two people save the same division, the second is warned and can see the other list, download their own, or save over it.

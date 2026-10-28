@@ -12,7 +12,6 @@
     x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
     undo: '<svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>',
     cal: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
-    paste: '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 11h6M9 15h4"/></svg>',
     edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/></svg>',
     sheet: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>',
   };
@@ -131,7 +130,6 @@
       <ol class="help-steps">
         <li><b>Choose your circle, then your division.</b></li>
         <li><b>Click any row</b> (or <b>Add volunteer</b>). A panel opens with a calendar for dates and buttons for qualification, place and duty. Use <b>Next ›</b> to go to the next volunteer.</li>
-        <li><b>Already have the list in Excel?</b> Press <b>Paste from Excel</b>, paste the rows into the box, and check them.</li>
         <li><b>Save often</b> with the ${icon.save.replace('<svg', '<svg style="width:15px;height:15px;vertical-align:-2px;stroke:currentColor;fill:none;stroke-width:2"')} <b>Save</b> button or <span class="kbd">Ctrl</span> + <span class="kbd">S</span>. You can come back any time and continue.</li>
         <li><b>A volunteer is counted as added only when every detail is filled.</b> You can save part-filled entries; cells marked <b>missing</b> show what is left. Press <b>Details missing</b> at the top to go to the next one.</li>
         <li><b>Yellow cells</b> are changed but not saved yet. <b>Red cells</b> need fixing (a missing name or a wrong date).</li>
@@ -355,8 +353,7 @@
         <span class="state" id="state"></span>
         <span class="sp"></span>
         <button class="btn sm soft" id="addOne">${icon.plus} Add volunteer</button>
-        <button class="btn sm ghost" id="pasteBtn">${icon.paste} <span class="hide-sm">Paste from</span> Excel</button>
-        <button class="btn sm ghost" id="dlBtn" title="Download this list as an Excel (CSV) file">${icon.down} <span class="hide-sm">Download</span></button>
+        <button class="btn sm ghost" id="dlBtn" title="Download this list as an Excel (CSV) file">${icon.down}<span class="hide-sm">Download</span></button>
         <button class="btn sm ghost" data-help>? <span class="hide-sm">How to fill</span></button>
       </div>
       <div class="grid-wrap" id="gridWrap"><div class="grid-title">List of Volunteers · ${esc(G.division)}</div>
@@ -379,7 +376,6 @@
       else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const n = e.key === 'ArrowDown' ? tr.nextElementSibling : tr.previousElementSibling; if (n) n.focus(); }
     });
     $('#addOne').onclick = () => { padRows(); openPanel(G.rows.findIndex(r => isBlank(r) && !r.del && !r.id)); };
-    $('#pasteBtn').onclick = openPaste;
     const tm = $('#tallyMiss'); if (tm) tm.onclick = () => { const after = G.rows.findIndex((r, i) => i > P.i && !r.del && !isBlank(r) && missingOf(r).length); openNextMissing(after); };
     $('#saveBtn').onclick = save;
     $('#dlBtn').onclick = () => download(`${G.division} - Forest Volunteers.csv`, csvRows(G.rows.filter(r => !r.del && !isBlank(r))));
@@ -431,58 +427,6 @@
     redraw(); setState(); saveDraft();
     if (r.del) toast(`${r.name || 'This volunteer'} will be removed when you press Save.`);
   }
-  /* -- Paste from Excel: rows copied from a sheet are read into new volunteers, then checked in the panel -- */
-  // A 12-column row in the circular's format (Sl No, Name, DOB, Qual, Circle, Division, …) is mapped by position; otherwise columns are taken in table order.
-  const PASTE_KEYS = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'place', 'works'];
-  function parsePasted(txt) {
-    return String(txt || '').replace(/\r/g, '').split('\n').map(l => l.split('\t'))
-      .filter(cells => cells.some(v => String(v).trim()) && !/name of (forest )?volunteer|^\s*sl\.?\s*no/i.test(cells.join(' ')))
-      .map(cells => {
-        const vals = cells.length >= 12 ? [1, 2, 3, 6, 7, 8, 9, 10, 11].map(c => cells[c]) : cells.length === 11 ? [0, 1, 2, 5, 6, 7, 8, 9, 10].map(c => cells[c])
-          : /^\s*\d+\s*$/.test(cells[0]) && cells.length > 1 ? cells.slice(1) : cells;
-        const r = blankRow();
-        PASTE_KEYS.forEach((k, j) => {
-          const v = String(vals[j] == null ? '' : vals[j]).trim(); if (!v) return;
-          if (k === 'place') {
-            const m = /^(div(?:ision)?\.?\s*hq|hq|range|beat|camp)\b[\s:,\-–/]*(.*)$/i.exec(v);
-            if (m) { r.placeType = /hq/i.test(m[1]) ? 'Div HQ' : m[1][0].toUpperCase() + m[1].slice(1).toLowerCase(); r.placeName = m[2]; }
-            else { r.placeType = 'Other'; r.placeName = v; }
-          } else if (k === 'works') { r.works = v; r.duty = undefined; splitWorks(r); }
-          else if (k === 'dob' || k === 'doj') { const d = normDate(v); r[k] = d === null ? v : d; }
-          else r[k] = v;
-        });
-        return r;
-      }).filter(r => !isBlank(r));
-  }
-  function openPaste() {
-    const d = dialog('Paste from Excel', 'Add many volunteers at once from a sheet you already have', `
-      <ol class="help-steps"><li>In Excel, select the rows of volunteers (with or without the heading row) and copy them (<span class="kbd">Ctrl</span> + <span class="kbd">C</span>).</li>
-        <li>Click in the box below and paste (<span class="kbd">Ctrl</span> + <span class="kbd">V</span>).</li></ol>
-      <textarea id="pasteBox" class="paste-box" rows="5" placeholder="Paste the rows here"></textarea>
-      <div id="pastePrev" class="faint" style="margin-top:10px">The columns of the circular are understood: Sl No, Name, Date of Birth, Qualification, Circle, Division, references, Date of Joining, Place, Nature of works.</div>`,
-      `<button class="btn" id="pasteCancel">Cancel</button><button class="btn primary" id="pasteAdd" disabled>Add volunteers</button>`);
-    const box = d.el.querySelector('#pasteBox'), add = d.el.querySelector('#pasteAdd');
-    let rows = [];
-    const show = () => {
-      rows = parsePasted(box.value);
-      add.disabled = !rows.length;
-      add.textContent = rows.length ? `Add ${rows.length} volunteer${rows.length === 1 ? '' : 's'}` : 'Add volunteers';
-      d.el.querySelector('#pastePrev').innerHTML = rows.length ? `<div class="tscroll" style="max-height:220px"><table class="dtable"><thead><tr><th>Name</th><th>Date of birth</th><th>Joined</th><th>Nature of works</th></tr></thead><tbody>
-        ${rows.slice(0, 50).map(r => `<tr class="plainrow"><td class="tn">${esc(r.name || '(no name)')}</td><td>${esc(r.dob)}</td><td>${esc(r.doj)}</td><td>${esc(joinWorks(r))}</td></tr>`).join('')}</tbody></table></div>`
-        : box.value.trim() ? 'No volunteers found in what was pasted. Copy the rows straight from Excel.' : d.el.querySelector('#pastePrev').innerHTML;
-    };
-    box.addEventListener('input', show);
-    setTimeout(() => box.focus(), 80);
-    d.el.querySelector('#pasteCancel').onclick = d.close;
-    add.onclick = () => {
-      const at = G.rows.findIndex(r => isBlank(r) && !r.del && !r.id);
-      G.rows.splice(at < 0 ? G.rows.length : at, 0, ...rows);
-      padRows(); redraw(); setState(); saveDraft(); d.close();
-      const bad = rows.filter(r => Object.keys(rowProblems(r)).length).length;
-      toast(`Added ${rows.length}. ${bad ? bad + ' need a fix (red). ' : ''}Check them with Edit, then press Save.`, !!bad);
-    };
-  }
-
   /* -- the edit panel: one volunteer at a time, big fields, a calendar for dates, tap-to-choose options -- */
   const P = { i: -1, cal: null };
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -669,7 +613,7 @@
       <div class="pn-foot">
         <button type="button" class="btn sm" data-nav="-1" ${P.i > 0 ? '' : 'disabled'}>‹ Previous</button>
         <button type="button" class="btn sm" data-nav="1" ${P.i < G.rows.length - 1 ? '' : 'disabled'}>Next ›</button>
-        ${G.rows.some((x, j) => j !== P.i && !x.del && !isBlank(x) && missingOf(x).length) ? '<button type="button" class="btn sm ghost miss-btn" id="pnNextMiss">Next with missing ›</button>' : ''}
+        ${G.rows.some((x, j) => j !== P.i && !x.del && !isBlank(x) && missingOf(x).length) ? '<button type="button" class="btn sm ghost miss-btn" id="pnNextMiss" title="Go to the next volunteer with details missing">Next missing ›</button>' : ''}
         <span class="sp"></span><span class="state" id="pnState"></span>
         <button type="button" class="btn primary save" id="pnSave" title="Save (Ctrl + S)">${icon.save} Save</button></div>`;
     el.querySelector('.pn-body').scrollTop = keep;

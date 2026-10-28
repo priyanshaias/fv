@@ -222,3 +222,6 @@ table.grid td.gap { background: #fffaf3; }
 table.grid .cv.nmv { display: flex; align-items: center; gap: 8px; padding-right: 6px; }
 table.grid .cv.nmv .nmt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 table.grid .cv.nmv .ebtn { flex: none; height: 28px; }
+.pn-foot { gap: 6px; }
+.pn-foot .state { font-size: 12.5px; white-space: nowrap; }
+.pn-foot .miss-btn { padding: 0 8px; }
