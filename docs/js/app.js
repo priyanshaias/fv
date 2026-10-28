@@ -74,7 +74,9 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
     del(k) { try { localStorage.removeItem(k); } catch (e) {} },
   };
-  const op = () => store.get('fv_operator');
+  // there is one admin (GS): admins are never asked for their details, and their saves are recorded as GS
+  const ADMIN_OP = { name: 'GS', designation: 'Administrator', mobile: '' };
+  const op = () => API.user && API.user.isAdmin && !API.DEMO ? ADMIN_OP : store.get('fv_operator');
   const go = h => { location.hash = h; };
   const initials = s => String(s || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
   async function guard(fn) {
@@ -154,14 +156,14 @@
         <div class="menu-who"><b>${esc(nm)}</b><span>${esc(o && o.designation || '')}${u.username ? ' · signed in as ' + esc(u.username) : ''}</span></div>
         ${u.isAdmin ? '<a role="menuitem" href="#/admin">Dashboard</a>' : ''}
         <a role="menuitem" href="#/circles">All circles</a>
-        <button role="menuitem" id="meBtn">My details</button>
+        ${u.isAdmin && !API.DEMO ? '' : '<button role="menuitem" id="meBtn">My details</button>'}
         <button role="menuitem" id="outBtn">Sign out</button>
       </div>`;
     const menu = $('#menu'), mb = $('#menuBtn');
     mb.onclick = e => { e.stopPropagation(); mb.setAttribute('aria-expanded', menu.classList.toggle('hidden') === false); };
     menu.querySelectorAll('a').forEach(a => a.onclick = () => menu.classList.add('hidden'));
     $('#outBtn').onclick = () => { if (G && dirty()) { toast('Save your changes before signing out.', true); return; } API.signOut(); META = null; go('#/'); route(); };
-    $('#meBtn').onclick = () => { menu.classList.add('hidden'); renderOperator(true); };
+    const me = $('#meBtn'); if (me) me.onclick = () => { menu.classList.add('hidden'); renderOperator(true); };
   }
   document.addEventListener('click', e => { const m = $('#menu'); if (m && !e.target.closest('#menu')) m.classList.add('hidden'); });
 
