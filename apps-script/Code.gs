@@ -138,30 +138,46 @@ function fvSetup() {
   Logger.log('Users: ' + Object.keys(local_().accounts).join(', '));
 }
 
+/**
+ * The Forest Volunteers sheet: SHEET_ID from Config.local.gs, else the sheet this script was opened from
+ * (Extensions → Apps Script), else the one fvSetup() created earlier, else a new one. Missing tabs are added.
+ */
 function ss_() {
-  const fixed = local_().sheetId;
-  if (fixed) return SpreadsheetApp.openById(fixed);
   const props = PropertiesService.getScriptProperties();
-  let id = props.getProperty(CONFIG.PROP);
-  if (id) return SpreadsheetApp.openById(id);
+  const fixed = local_().sheetId || props.getProperty(CONFIG.PROP);
+  if (fixed) return tabs_(SpreadsheetApp.openById(fixed));
+  const bound = SpreadsheetApp.getActiveSpreadsheet();
+  if (bound) { props.setProperty(CONFIG.PROP, bound.getId()); return tabs_(bound); }
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
-    id = props.getProperty(CONFIG.PROP);
-    if (id) return SpreadsheetApp.openById(id);
+    const id = props.getProperty(CONFIG.PROP);
+    if (id) return tabs_(SpreadsheetApp.openById(id));
     const ss = SpreadsheetApp.create('Forest Volunteers');
-    const sh = ss.getSheets()[0].setName(CONFIG.TAB);
-    sh.getRange(1, 1, 1, COLS.length).setValues([COLS.map(c => c[1])]).setFontWeight('bold').setWrap(true);
-    sh.setFrozenRows(1);
-    const lg = ss.insertSheet(CONFIG.LOG);
-    lg.getRange(1, 1, 1, LOG_HEADERS.length).setValues([LOG_HEADERS]).setFontWeight('bold');
-    lg.setFrozenRows(1);
-    const li = ss.insertSheet(CONFIG.LISTS), rows = [['Circle', 'Office', 'Division']];
-    SEED_LISTS.forEach(([c, o, ds]) => ds.forEach(d => rows.push([c, o, d])));
-    li.getRange(1, 1, rows.length, 3).setNumberFormat('@').setValues(rows);
-    li.getRange(1, 1, 1, 3).setFontWeight('bold'); li.setFrozenRows(1);
     props.setProperty(CONFIG.PROP, ss.getId());
-    return ss;
+    return tabs_(ss);
   } finally { lock.releaseLock(); }
+}
+/** Adds the Volunteers, Change Log and Lists tabs if the sheet does not have them yet. */
+function tabs_(ss) {
+  if (ss.getSheetByName(CONFIG.TAB) && ss.getSheetByName(CONFIG.LOG) && ss.getSheetByName(CONFIG.LISTS)) return ss;
+  const add = (name, headers) => {
+    let sh = ss.getSheetByName(name);
+    if (sh) return null;
+    const blank = ss.getSheets().length === 1 && ss.getSheets()[0].getLastRow() === 0 && !ss.getSheetByName(CONFIG.TAB) && name === CONFIG.TAB;
+    sh = blank ? ss.getSheets()[0].setName(name) : ss.insertSheet(name);
+    sh.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setWrap(true);
+    sh.setFrozenRows(1);
+    return sh;
+  };
+  add(CONFIG.TAB, COLS.map(c => c[1]));
+  add(CONFIG.LOG, LOG_HEADERS);
+  const li = add(CONFIG.LISTS, ['Circle', 'Office', 'Division']);
+  if (li) {
+    const rows = [];
+    SEED_LISTS.forEach(([c, o, ds]) => ds.forEach(d => rows.push([c, o, d])));
+    li.getRange(2, 1, rows.length, 3).setNumberFormat('@').setValues(rows);
+  }
+  return ss;
 }
 function tab_(name) { return ss_().getSheetByName(name); }
 
