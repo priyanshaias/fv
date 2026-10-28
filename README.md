@@ -14,6 +14,11 @@ FV is completely separate from UPMC2: it has its own repo, Apps Script project, 
 ## What the operator sees
 - **Circle → Division**, with the number of volunteers entered and when the division was last saved.
 - **Nature of works** uses the DL / CDL duty list (Cleaning, Nursery, Timber depot, Driver, Mali, Protection & patrolling, Human-animal conflict, Night guard) plus **Others**, which needs the actual work written out. Duty and details are kept together in one sheet column, e.g. `Others: Mahut of elephant Champa`.
+- **Edit panel.** **Edit** at the end of any row, or **Add volunteer**, opens a panel for one volunteer at a time:
+  - a calendar for both dates, with month and year dropdowns and decade buttons for the date of birth (age is shown) and **Today** for joining;
+  - tap-to-choose buttons for qualification, place of joining and main duty;
+  - references, place names and duty details already used in the division offered as one-tap chips;
+  - **Previous / Next** to move through the volunteers, and **Save** in the panel. **Esc** closes it.
 - **The sheet.** It has the columns of the circular: Sl No, Name, Date of Birth, Educational Qualification, Dept. approval ref, Directorate ref, Appointment order, Date of Joining, Present place (Div HQ / Range / Beat / Camp plus its name) and Nature of works. Circle and Division come from the choice already made.
   - Type in cells. **Enter** moves down and **Tab** moves across.
   - **Paste rows straight from Excel**. Both the circular's 12-column format and plain copied columns work.

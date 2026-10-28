@@ -11,6 +11,8 @@
     plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
     x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
     undo: '<svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>',
+    cal: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+    edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/></svg>',
     sheet: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>',
   };
   const HELP = { name: 'Sudipta Kundu', office: 'Aranya Bhawan', phone: '+91 70442 30806', tel: '+917044230806' };
@@ -113,7 +115,8 @@
         <a class="btn primary" href="tel:${HELP.tel}">Call ${HELP.phone}</a></div>
       <ol class="help-steps">
         <li><b>Choose your circle, then your division.</b></li>
-        <li><b>Fill the sheet like Excel.</b> One row per volunteer. Click a cell and type; <span class="kbd">Enter</span> goes to the next row, <span class="kbd">Tab</span> to the next column.</li>
+        <li><b>Easiest way:</b> press <b>Edit</b> at the end of a row (or <b>Add volunteer</b>). A panel opens with a calendar for dates and buttons for qualification, place and duty. Use <b>Next ›</b> to go to the next volunteer.</li>
+        <li><b>Or fill the sheet like Excel.</b> One row per volunteer. Click a cell and type; <span class="kbd">Enter</span> goes to the next row, <span class="kbd">Tab</span> to the next column.</li>
         <li><b>Already have the list in Excel?</b> Select the rows in Excel, copy, click the first Name cell here and paste (<span class="kbd">Ctrl</span> + <span class="kbd">V</span>).</li>
         <li><b>Save often</b> with the ${icon.save.replace('<svg', '<svg style="width:15px;height:15px;vertical-align:-2px;stroke:currentColor;fill:none;stroke-width:2"')} <b>Save</b> button or <span class="kbd">Ctrl</span> + <span class="kbd">S</span>. You can come back any time and continue.</li>
         <li><b>Yellow cells</b> are changed but not saved yet. <b>Red cells</b> need fixing (a missing name or a wrong date).</li>
@@ -311,7 +314,7 @@
       return `<td class="${cl}"${tip ? ` title="${esc(tip)}"` : ''}>${cellHtml(r, i, c)}</td>`;
     };
     return `<tr data-r="${i}" class="${r.del ? 'del' : ''}${!r.id && !isBlank(r) ? ' new' : ''}"><td class="sl">${sl}</td>${COLS.map(tdc).join('')}
-      <td class="act">${isBlank(r) && !r.id ? '' : `<button class="xbtn" data-x="${i}" title="${r.del ? 'Undo remove' : 'Remove this volunteer'}" aria-label="${r.del ? 'Undo remove' : 'Remove'} row ${i + 1}">${r.del ? icon.undo : icon.x}</button>`}</td></tr>`;
+      <td class="act"><button class="ebtn" data-e="${i}" title="Open in the edit panel" aria-label="Edit row ${i + 1}">${icon.edit}<span>${isBlank(r) && !r.id ? 'Fill' : 'Edit'}</span></button>${isBlank(r) && !r.id ? '' : `<button class="xbtn" data-x="${i}" title="${r.del ? 'Undo remove' : 'Remove this volunteer'}" aria-label="${r.del ? 'Undo remove' : 'Remove'} row ${i + 1}">${r.del ? icon.undo : icon.x}</button>`}</td></tr>`;
   }
   function drawSheet(focusId) {
     const filled = G.rows.filter(r => !r.del && !isBlank(r)).length;
@@ -323,12 +326,13 @@
         <button class="btn primary save" id="saveBtn" title="Save (Ctrl + S)">${icon.save} Save</button>
         <span class="state" id="state"></span>
         <span class="sp"></span>
-        <button class="btn sm ghost" id="addRows">${icon.plus} Add 10 rows</button>
+        <button class="btn sm soft" id="addOne">${icon.plus} Add volunteer</button>
+        <button class="btn sm ghost hide-sm" id="addRows">Add 10 rows</button>
         <button class="btn sm ghost" id="dlBtn">${icon.down} <span class="hide-sm">Download</span> Excel</button>
         <button class="btn sm ghost" data-help>? <span class="hide-sm">How to fill</span></button>
       </div>
       <div class="grid-wrap" id="gridWrap"><div class="grid-title">List of Volunteers · ${esc(G.division)}</div>
-        <table class="grid" id="grid" style="width:${54 + 44 + COLS.reduce((a, c) => a + c.w, 0)}px"><colgroup><col style="width:54px">${COLS.map(c => `<col style="width:${c.w}px">`).join('')}<col style="width:44px"></colgroup>
+        <table class="grid" id="grid" style="width:${54 + 118 + COLS.reduce((a, c) => a + c.w, 0)}px"><colgroup><col style="width:54px">${COLS.map(c => `<col style="width:${c.w}px">`).join('')}<col style="width:118px"></colgroup>
           <thead><tr><th class="sl">Sl No</th>${COLS.map(c => `<th class="${c.cls || ''}">${esc(c.label)}${c.req ? ' <span class="req">*</span>' : ''}</th>`).join('')}<th class="act"></th></tr></thead>
           <tbody>${G.rows.map((r, i) => rowHtml(r, i, r.del || isBlank(r) ? (r.del ? '—' : '') : ++sl)).join('')}</tbody></table></div>
       <div class="gridfoot"><span><i class="legend-sq" style="background:var(--chg)"></i>changed, not saved</span><span><i class="legend-sq" style="background:var(--bad);border-color:var(--danger)"></i>needs fixing</span>
@@ -340,7 +344,12 @@
     grid.addEventListener('focusout', onBlur);
     grid.addEventListener('keydown', onKey);
     grid.addEventListener('paste', onPaste);
-    grid.addEventListener('click', e => { const b = e.target.closest('[data-x]'); if (b) toggleDel(+b.dataset.x); });
+    grid.addEventListener('click', e => {
+      const b = e.target.closest('[data-x]'); if (b) { toggleDel(+b.dataset.x); if (P.i >= 0) drawPanel(); return; }
+      const ed = e.target.closest('[data-e]'); if (ed) openPanel(+ed.dataset.e);
+    });
+    grid.addEventListener('dblclick', e => { const sl = e.target.closest('td.sl'); if (sl) openPanel(+sl.parentNode.dataset.r); });
+    $('#addOne').onclick = () => { padRows(); openPanel(G.rows.findIndex(r => isBlank(r) && !r.del && !r.id)); };
     $('#saveBtn').onclick = save;
     $('#addRows').onclick = () => { for (let i = 0; i < 10; i++) G.rows.push(blankRow()); const k = G.rows[G.rows.length - 10].key; redraw('c_' + k + '_name'); };
     $('#dlBtn').onclick = () => download(`${G.division} - Forest Volunteers.csv`, csvRows(G.rows.filter(r => !r.del && !isBlank(r))));
@@ -382,6 +391,8 @@
     s.textContent = text || (kind === 'saving' ? 'Saving…' : kind === 'dirty' ? `Unsaved changes in ${n || 'the'} row${n === 1 ? '' : 's'}` : G.ver.on ? 'All changes saved' : 'Nothing entered yet');
     b.classList.toggle('dirty', kind === 'dirty');
     b.disabled = G.saving;
+    const ps = $('#pnSave'); if (ps) { ps.disabled = G.saving; ps.classList.toggle('dirty', kind === 'dirty'); }
+    pnState();
   }
   function refreshCell(input) {
     const i = +input.dataset.r, r = G.rows[i], td = input.closest('td'), p = rowProblems(r);
@@ -476,6 +487,182 @@
     toast(`Pasted ${n} row${n === 1 ? '' : 's'}. Check them, then press Save.`);
   }
 
+  /* -- the edit panel: one volunteer at a time, big fields, a calendar for dates, tap-to-choose options -- */
+  const P = { i: -1, cal: null };
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const THIS_YEAR = new Date().getFullYear();
+  const DATE_OPTS = { dob: { from: 1950, to: THIS_YEAR - 14, start: 2000 }, doj: { from: 2000, to: THIS_YEAR + 1, start: THIS_YEAR } };
+  /** Values already used for a field in this division (most used first), so a reference typed once is one tap away for the next volunteer. */
+  function used(k, cur, n) {
+    const c = {};
+    G.rows.forEach(r => { const v = String(r[k] || '').trim(); if (v && !r.del && v !== String(cur || '').trim()) c[v] = (c[v] || 0) + 1; });
+    return Object.keys(c).sort((a, b) => c[b] - c[a]).slice(0, n || 3);
+  }
+  const chips = (k, vals, label) => vals.length ? `<div class="pf-use"><span class="faint">${label || 'Use'}:</span>${vals.map(v => `<button type="button" class="use-chip" data-set="${k}" data-v="${esc(v)}" title="${esc(v)}">${esc(v)}</button>`).join('')}</div>` : '';
+  const ageOf = s => { const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(s || ''); if (!m) return ''; const b = new Date(+m[3], +m[2] - 1, +m[1]), t = new Date(); let a = t.getFullYear() - b.getFullYear(); if (t < new Date(t.getFullYear(), b.getMonth(), b.getDate())) a--; return a >= 0 && a < 120 ? a + ' years old' : ''; };
+  const longDate = s => { const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(s || ''); return m ? `${+m[1]} ${MONTHS[+m[2] - 1]} ${m[3]}` : ''; };
+
+  function openPanel(i) {
+    if (!G || !G.rows[i]) return;
+    if (P.i !== i) P.tried = false;
+    P.i = i;
+    let el = $('#panel');
+    if (!el) {
+      el = document.createElement('div'); el.id = 'panelWrap';
+      el.innerHTML = '<div class="pn-scrim" id="pnScrim"></div><aside class="panel" id="panel" role="dialog" aria-modal="true" aria-label="Edit volunteer"></aside>';
+      document.body.appendChild(el);
+      $('#pnScrim').onclick = closePanel;
+      const p = $('#panel');
+      p.addEventListener('input', e => { const f = e.target.dataset.f; if (f) setField(f, e.target.value, true); });
+      p.addEventListener('change', e => { const f = e.target.dataset.f; if (!f) return; if (f === 'dob' || f === 'doj') { const n = normDate(e.target.value); if (n) setField(f, n); else drawPanel(); } });
+      p.addEventListener('click', panelClick);
+      p.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.dataset.cal == null) { e.preventDefault(); const all = Array.from(p.querySelectorAll('input[data-f], textarea[data-f]')); const n = all[all.indexOf(e.target) + 1]; if (n) n.focus(); } });
+      el = $('#panel');
+    }
+    drawPanel();
+    requestAnimationFrame(() => document.body.classList.add('pn-on'));
+    const r = G.rows[i];
+    setTimeout(() => { const f = $(r.name ? '#pn_close' : '#pf_name'); if (f) f.focus({ preventScroll: true }); }, 60);
+    markRow();
+  }
+  function closePanel() {
+    document.body.classList.remove('pn-on'); P.i = -1; P.cal = null; markRow();
+    const last = $('#grid tr.editing'); if (last) last.classList.remove('editing');
+  }
+  function markRow() {
+    document.querySelectorAll('#grid tr.editing').forEach(t => t.classList.remove('editing'));
+    if (P.i >= 0) { const tr = document.querySelector(`#grid tbody tr[data-r="${P.i}"]`); if (tr) { tr.classList.add('editing'); tr.scrollIntoView({ block: 'nearest' }); } }
+  }
+  function setField(k, v, typing) {
+    const r = G.rows[P.i]; if (!r) return;
+    r[k] = v;
+    if (k === 'placeType' && v === 'Div HQ' && !r.placeName) r.placeName = '';
+    clearTimeout(P.t); P.t = setTimeout(() => { padRows(); redraw(); markRow(); setState(); }, typing ? 250 : 0);
+    saveDraft();
+    if (!typing) drawPanel(); else refreshPanelChecks();
+  }
+  /** While typing, only the messages and the header change (redrawing would move the cursor). */
+  function refreshPanelChecks() {
+    const r = G.rows[P.i], p = panelProblems(r);
+    document.querySelectorAll('#panel [data-err]').forEach(e => { const m = p[e.dataset.err]; e.textContent = m || ''; e.closest('.pf').classList.toggle('bad', !!m); });
+    const h = $('#pnTitle'); if (h) h.textContent = r.name || 'New volunteer';
+    const a = $('#pnAge'); if (a) a.textContent = ageOf(r.dob);
+    pnState();
+  }
+  function pnState() {
+    const s = $('#pnState'); if (!s) return;
+    const d = dirty();
+    s.className = 'state ' + (G.saving ? 'saving' : d ? 'dirty' : 'clean');
+    s.textContent = G.saving ? 'Saving…' : d ? 'Not saved yet' : 'All saved';
+  }
+  function panelProblems(r) {
+    const p = rowProblems(r);
+    if (p.wdet && !P.tried && !String(r.wdet || '').trim()) delete p.wdet;
+    return p;
+  }
+  function dateField(k, label, r, help) {
+    return `<div class="pf ${rowProblems(r)[k] ? 'bad' : ''}"><label for="pf_${k}">${label}</label>
+      <div class="datebox"><input id="pf_${k}" data-f="${k}" value="${esc(r[k] || '')}" placeholder="DD-MM-YYYY" inputmode="numeric" autocomplete="off">
+        <button type="button" class="btn cal-btn" data-cal="${k}" aria-label="Open calendar for ${label}">${icon.cal} Pick</button></div>
+      <div class="pf-hint">${k === 'dob' ? `<span id="pnAge">${ageOf(r.dob)}</span>` : esc(longDate(r[k]))}${help ? ' ' + help : ''}</div>
+      <div class="pf-err" data-err="${k}">${esc(rowProblems(r)[k] || '')}</div>
+      ${P.cal === k ? calendarHtml(k, r[k]) : ''}</div>`;
+  }
+  function calendarHtml(k, val) {
+    const o = DATE_OPTS[k], m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(val || '');
+    if (!P.view || P.view.k !== k) P.view = { k, y: m ? +m[3] : o.start, mo: m ? +m[2] - 1 : (k === 'doj' ? new Date().getMonth() : 0) };
+    const { y, mo } = P.view, first = new Date(y, mo, 1).getDay(), days = new Date(y, mo + 1, 0).getDate();
+    const sel = m && +m[3] === y && +m[2] - 1 === mo ? +m[1] : 0, t = new Date(), isT = d => t.getFullYear() === y && t.getMonth() === mo && t.getDate() === d;
+    const years = []; for (let yy = o.to; yy >= o.from; yy--) years.push(yy);
+    const cells = []; for (let b = 0; b < (first + 6) % 7; b++) cells.push('<span></span>');
+    for (let d = 1; d <= days; d++) cells.push(`<button type="button" class="day${d === sel ? ' on' : ''}${isT(d) ? ' today' : ''}" data-day="${d}">${d}</button>`);
+    return `<div class="cal" role="dialog" aria-label="Choose a date">
+      <div class="cal-head"><button type="button" class="cal-nav" data-mo="-1" aria-label="Previous month">‹</button>
+        <select data-cmo aria-label="Month">${MONTHS.map((n, i) => `<option value="${i}"${i === mo ? ' selected' : ''}>${n}</option>`).join('')}</select>
+        <select data-cy aria-label="Year">${years.map(yy => `<option${yy === y ? ' selected' : ''}>${yy}</option>`).join('')}</select>
+        <button type="button" class="cal-nav" data-mo="1" aria-label="Next month">›</button></div>
+      ${k === 'dob' ? `<div class="cal-decades">${[1970, 1980, 1990, 2000, 2005].filter(d => d <= o.to).map(d => `<button type="button" data-jump="${d}" class="${y >= d && y < d + (d === 2000 ? 5 : 10) ? 'on' : ''}">${d}s</button>`).join('')}</div>` : ''}
+      <div class="cal-week">${['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(d => `<span>${d}</span>`).join('')}</div>
+      <div class="cal-grid">${cells.join('')}</div>
+      <div class="cal-foot">${k === 'doj' ? '<button type="button" class="btn sm ghost" data-today>Today</button>' : ''}<span class="sp"></span>
+        <button type="button" class="btn sm ghost" data-clear>Clear</button><button type="button" class="btn sm" data-calclose>Close</button></div></div>`;
+  }
+  function panelClick(e) {
+    const t = e.target.closest('button, select'); if (!t) return;
+    const r = G.rows[P.i], d = t.dataset;
+    if (t.id === 'pn_close') return closePanel();
+    if (d.nav) { const j = P.i + (+d.nav); if (j >= 0 && j < G.rows.length) { P.cal = null; P.view = null; openPanel(j); } return; }
+    if (d.set) { setField(d.set, d.v); if (d.set === 'duty') { const w = $('#pf_wdet'); if (w && d.v === 'Others') w.focus(); } return; }
+    if (d.cal) { P.cal = P.cal === d.cal ? null : d.cal; P.view = null; drawPanel(); return; }
+    if (d.day) { const k = P.cal, v = `${String(d.day).padStart(2, '0')}-${String(P.view.mo + 1).padStart(2, '0')}-${P.view.y}`; P.cal = null; P.view = null; setField(k, v); return; }
+    if (d.mo) { let mo = P.view.mo + (+d.mo), y = P.view.y; if (mo < 0) { mo = 11; y--; } if (mo > 11) { mo = 0; y++; } const o = DATE_OPTS[P.cal]; if (y >= o.from && y <= o.to) { P.view.mo = mo; P.view.y = y; } drawPanel(); return; }
+    if (d.jump) { P.view.y = Math.min(+d.jump, DATE_OPTS[P.cal].to); drawPanel(); return; }
+    if (d.today != null) { const n = new Date(); P.view = null; const k = P.cal; P.cal = null; setField(k, `${String(n.getDate()).padStart(2, '0')}-${String(n.getMonth() + 1).padStart(2, '0')}-${n.getFullYear()}`); return; }
+    if (d.clear != null) { const k = P.cal; P.cal = null; P.view = null; setField(k, ''); return; }
+    if (d.calclose != null) { P.cal = null; P.view = null; drawPanel(); return; }
+    if (t.id === 'pnSave') return save();
+    if (t.id === 'pnDel') { toggleDel(P.i); if (G.rows[P.i] && G.rows[P.i] === r) drawPanel(); else closePanel(); return; }
+  }
+  document.addEventListener('change', e => {
+    if (!e.target.closest('#panel .cal')) return;
+    if (e.target.dataset.cmo != null) P.view.mo = +e.target.value;
+    if (e.target.dataset.cy != null) P.view.y = +e.target.value;
+    drawPanel();
+  });
+  function drawPanel() {
+    const el = $('#panel'), r = G && G.rows[P.i]; if (!el || !r) return;
+    const keep = el.querySelector('.pn-body') ? el.querySelector('.pn-body').scrollTop : 0, focused = document.activeElement && document.activeElement.id;
+    const p = panelProblems(r), filled = G.rows.filter(x => !x.del && !isBlank(x)).length;
+    const pos = G.rows.slice(0, P.i + 1).filter(x => !x.del && !isBlank(x)).length;
+    const field = (k, label, help, extra) => `<div class="pf ${p[k] ? 'bad' : ''}"><label for="pf_${k}">${label}</label>
+      <input id="pf_${k}" data-f="${k}" value="${esc(r[k] || '')}" autocomplete="off"${extra || ''}>
+      ${help || ''}<div class="pf-err" data-err="${k}">${esc(p[k] || '')}</div></div>`;
+    const pick = (k, opts, wide) => `<div class="opts${wide ? ' wide' : ''}" role="radiogroup">${opts.map(o => `<button type="button" role="radio" aria-checked="${r[k] === o}" class="opt${r[k] === o ? ' on' : ''}" data-set="${k}" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;
+    el.innerHTML = `
+      <div class="pn-head"><div class="grow"><div class="faint">${r.id || !isBlank(r) ? `Volunteer ${pos || filled + 1} of ${Math.max(filled, pos)}` : 'New volunteer'} · ${esc(G.division)}</div>
+        <h2 id="pnTitle">${esc(r.name || 'New volunteer')}</h2>${r.del ? '<span class="pill attn">Will be removed when you save</span>' : ''}</div>
+        <button class="x" id="pn_close" aria-label="Close">×</button></div>
+      <div class="pn-body">
+        <section class="pn-sec"><h3>Volunteer</h3>
+          ${field('name', 'Name of Forest Volunteer <span class="req">*</span>', '', ' autocapitalize="words"')}
+          ${dateField('dob', 'Date of birth', r)}
+          <div class="pf"><label>Educational qualification</label>${pick('qual', QUALS)}
+            <input id="pf_qual" data-f="qual" class="mt" value="${esc(QUALS.includes(r.qual) ? '' : r.qual || '')}" placeholder="or type another, e.g. B.Sc. Forestry" autocomplete="off"></div>
+        </section>
+        <section class="pn-sec"><h3>Orders and references</h3>
+          ${field('deptRef', 'Forest Dept.’s approval ref', chips('deptRef', used('deptRef', r.deptRef)), ' placeholder="e.g. No. 1123/FD/2025 dt 12-06-2025"')}
+          ${field('dirRef', 'Forest Directorate’s Ref no sent to the Circle in Charge', chips('dirRef', used('dirRef', r.dirRef)))}
+          ${field('apptRef', 'Appointment order issued by / reference', chips('apptRef', used('apptRef', r.apptRef)), ' placeholder="e.g. DFO, ' + esc(G.division) + ' · Memo 310/…"')}
+        </section>
+        <section class="pn-sec"><h3>Joining</h3>
+          ${dateField('doj', 'Date of joining', r)}
+          <div class="pf"><label>Present place of joining</label>${pick('placeType', PLACES)}
+            ${r.placeType && r.placeType !== 'Div HQ' ? `<input id="pf_placeName" data-f="placeName" class="mt" value="${esc(r.placeName || '')}" placeholder="Name of the ${esc(r.placeType === 'Other' ? 'place' : r.placeType.toLowerCase())}" autocomplete="off">
+            ${chips('placeName', used('placeName', r.placeName, 5))}` : ''}</div>
+        </section>
+        <section class="pn-sec"><h3>Nature of works assigned</h3>
+          <div class="pf ${p.duty ? 'bad' : ''}"><label>Main duty</label>${pick('duty', DUTIES, true)}<div class="pf-err" data-err="duty">${esc(p.duty || '')}</div></div>
+          <div class="pf ${p.wdet ? 'bad' : ''}"><label for="pf_wdet">${r.duty === 'Others' ? 'Write the actual work <span class="req">*</span>' : 'Details <span class="faint">(optional)</span>'}</label>
+            <textarea id="pf_wdet" data-f="wdet" rows="2" placeholder="${r.duty === 'Others' ? 'e.g. Mahut of elephant Champa; peon in DFO office' : 'e.g. fire watch at Tonglu'}">${esc(r.wdet || '')}</textarea>
+            ${chips('wdet', used('wdet', r.wdet, 4))}<div class="pf-err" data-err="wdet">${esc(p.wdet || '')}</div></div>
+        </section>
+        ${r.id || !isBlank(r) ? `<button type="button" class="btn sm ghost danger" id="pnDel">${r.del ? icon.undo + ' Keep this volunteer' : icon.x + ' Remove this volunteer'}</button>` : ''}
+      </div>
+      <div class="pn-foot">
+        <button type="button" class="btn sm" data-nav="-1" ${P.i > 0 ? '' : 'disabled'}>‹ Previous</button>
+        <button type="button" class="btn sm" data-nav="1" ${P.i < G.rows.length - 1 ? '' : 'disabled'}>Next ›</button>
+        <span class="sp"></span><span class="state" id="pnState"></span>
+        <button type="button" class="btn primary save" id="pnSave" title="Save (Ctrl + S)">${icon.save} Save</button></div>`;
+    el.querySelector('.pn-body').scrollTop = keep;
+    if (focused && focused.indexOf('pf_') === 0) { const f = document.getElementById(focused); if (f) { f.focus({ preventScroll: true }); if (f.setSelectionRange) try { f.setSelectionRange(f.value.length, f.value.length); } catch (er) {} } }
+    if (P.cal) { const c = el.querySelector('.cal'); if (c) c.scrollIntoView({ block: 'nearest' }); }
+    pnState();
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || !document.body.classList.contains('pn-on')) return;
+    if (P.cal) { P.cal = null; P.view = null; drawPanel(); } else closePanel();
+  });
+
   /* -- saving -- */
   async function save(force) {
     if (!G || G.saving) return;
@@ -483,11 +670,14 @@
     const bad = G.rows.map((r, i) => [i, rowProblems(r)]).filter(x => Object.keys(x[1]).length);
     if (bad.length) {
       redraw();
-      const [i, p] = bad[0], f = cellAt(i, Object.keys(p)[0]); if (f) f.focus();
+      const [i, p] = bad[0];
+      if (P.i >= 0) { P.tried = true; openPanel(i); const f = $('#pf_' + Object.keys(p)[0]); if (f) f.focus(); }
+      else { const f = cellAt(i, Object.keys(p)[0]); if (f) f.focus(); }
       toast(`Fix the red cell${bad.length > 1 ? 's' : ''} first: ${Object.values(p)[0]}.`, true); return;
     }
     if (!dirty() && force !== true) { setState('clean', 'Nothing to save. All changes are saved.'); return; }
     const sent = G.rows.filter(r => !r.del && !isBlank(r));
+    const open = P.i >= 0 ? G.rows[P.i] : null;
     G.saving = true; setState('saving');
     let res;
     try {
@@ -506,6 +696,11 @@
     store.del(draftKey());
     if (META) { META.counts[G.circle + '|' + G.division] = res.rows.length; if (res.changes) META.saved[G.circle + '|' + G.division] = { on: res.ver.on, by: res.ver.by }; }
     padRows(); redraw();
+    const nt = $('#sheetNote'); if (nt) nt.classList.add('hidden');   // "unsaved changes are back" no longer applies
+    if (open) {   // stay on the same volunteer (a new one now has its id); a removed one closes the panel
+      const id = open.id || (res.ids || {})[open.key], j = id ? G.rows.findIndex(r => r.id === id) : isBlank(open) ? G.rows.findIndex(r => isBlank(r)) : -1;
+      if (j >= 0 && !open.del) { P.i = j; drawPanel(); markRow(); } else closePanel();
+    }
     setState('clean', res.changes ? `Saved · ${res.rows.length} volunteer${res.rows.length === 1 ? '' : 's'}` : 'All changes saved');
     toast(res.changes ? `Saved. ${res.changes} change${res.changes === 1 ? '' : 's'} recorded.` : 'Nothing had changed.');
   }
@@ -598,6 +793,7 @@
     if (!op()) { renderWho(); renderOperator(false); return; }
     renderWho();
     const parts = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
+    if (document.body.classList.contains('pn-on')) closePanel();
     if (parts[0] !== 'd') G = null;
     try {
       if (parts[0] === 'c' && parts[1]) await renderDivisions(parts[1]);
