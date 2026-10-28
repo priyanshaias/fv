@@ -26,7 +26,10 @@
     { k: 'dirRef', label: 'Forest Directorate’s Ref no sent to the Circle in Charge', w: 210 },
     { k: 'apptRef', label: 'Appointment Order issued by / reference', w: 210 },
     { k: 'doj', label: 'Date of Joining', w: 124, date: true },
-    { k: 'place', label: 'Present place of posting (Div HQ, or Range › Range HQ / Beat / Camp)', w: 330, place: true },
+    // present place of posting, in three columns (as in the sheet)
+    { k: 'posted', label: 'Posted at (Div HQ / Range)', w: 130, place: 'posted' },
+    { k: 'range', label: 'Range name', w: 210, place: 'range' },
+    { k: 'within', label: 'Within the range (Range HQ / Beat / Camp)', w: 220, place: 'within' },
     { k: 'works', label: 'Nature of Works assigned', w: 430, duty: true },
   ];
   // what is edited on screen; the sheet keeps duty and details together in one column ("Others: Mahut of elephant Champa")
@@ -95,8 +98,6 @@
     return r;
   }
   const joinSub = r => r.placeType !== 'Range' ? '' : r.subType === 'Range HQ' ? 'Range HQ' : r.subType ? (String(r.subName || '').trim() ? r.subType + ': ' + String(r.subName).trim() : r.subType) : String(r.subName || '').trim();
-  const rangeLabel = n => (n = String(n || '').trim()) ? (/\brange$/i.test(n) ? n : n + ' Range') : '';
-  const placeText = r => r.placeType === 'Div HQ' ? 'Div HQ' : r.placeType === 'Range' ? [rangeLabel(r.placeName) || 'Range (name missing)', joinSub(r)].filter(Boolean).join(' · ') : '';
   /** A row as the server sends it → the fields edited on screen. */
   const fromServer = r => splitPlace(splitWorks(r));
   const joinWorks = r => { const d = String(r.duty || '').trim(), t = String(r.wdet || '').trim(); return d && t ? d + ': ' + t : d || t; };
@@ -346,19 +347,23 @@
 
   // The sheet only shows the list. Every change is made in the edit panel, which opens on a click anywhere in a row.
   function cellText(r, c) {
-    if (c.place) return placeText(r);
+    if (c.place === 'posted') return r.placeType || '';
+    if (c.place === 'range') return r.placeType === 'Range' ? r.placeName || '' : '';
+    if (c.place === 'within') return joinSub(r);
     if (c.duty) return joinWorks(r);
     return r[c.k] || '';
   }
-  const fieldOf = c => c.place ? 'placeType' : c.duty ? 'duty' : c.k;
+  const PLACE_KEYS = { posted: ['placeType'], range: ['placeName'], within: ['subType', 'subName'] };
+  const PLACE_GAP = { posted: /^Place of posting$/, range: /^Range name$/, within: /^Range HQ \/ Beat \/ Camp$|^Name of the (beat|camp)$/ };
+  const fieldOf = c => c.place ? { posted: 'placeType', range: 'placeName', within: 'subType' }[c.place] : c.duty ? 'duty' : c.k;
   function rowHtml(r, i, sl) {
     if (isBlank(r) && !r.id && !r.del) {
       return `<tr data-r="${i}" class="addrow" tabindex="0" aria-label="Add a volunteer"><td class="sl">${icon.plus}</td>
         <td colspan="${COLS.length}"><span class="addtxt">Add a volunteer</span> <span class="faint">Click here to fill the next one</span></td></tr>`;
     }
     const p = rowProblems(r), incomplete = !r.del && missingOf(r).length, tdc = c => {
-      const ks = c.place ? ['placeType', 'placeName', 'subType', 'subName'] : c.duty ? ['duty', 'wdet'] : [c.k];
-      const gap = incomplete && (c.place ? missingOf(r).some(x => /Place of posting|Range|Name of the (beat|camp)/.test(x)) : c.duty ? !r.duty || (r.duty === 'Others' && missingOf(r).includes('Work details')) : !String(r[c.k] || '').trim());
+      const ks = c.place ? PLACE_KEYS[c.place] : c.duty ? ['duty', 'wdet'] : [c.k];
+      const gap = incomplete && (c.place ? missingOf(r).some(x => PLACE_GAP[c.place].test(x)) : c.duty ? !r.duty || (r.duty === 'Others' && missingOf(r).includes('Work details')) : !String(r[c.k] || '').trim());
       const cl = [c.cls || '', ks.some(k => p[k]) ? 'bad' : '', ks.some(k => cellChanged(r, k)) && !r.del ? 'chg' : '', gap ? 'gap' : ''].join(' ').trim();
       const tip = ks.map(k => p[k]).filter(Boolean)[0], t = cellText(r, c);
       const txt = t ? esc(t) : gap ? '<span class="empty miss">missing</span>' : '<span class="empty">—</span>';
@@ -429,9 +434,9 @@
   function csvRows(rows) {
     return [['Sl No', 'Name of Forest Volunteer Engaged', 'Date of Birth', 'Educational Qualification', 'Circle', 'Division', 'Forest Dept.\'s approval ref',
       'Forest Directorate\'s Ref no sent to the Circle in Charge', 'Appointment Order issued by/ reference', 'Date of Joining',
-      'Present place of posting (Div HQ / Range › Range HQ / Beat / Camp)', 'Nature of Works assigned']]
+      'Posted at (Div HQ / Range)', 'Range name', 'Within the range (Range HQ / Beat / Camp)', 'Nature of Works assigned']]
       .concat(rows.map((r, i) => [i + 1, r.name, r.dob, r.qual, G.circle, G.division, r.deptRef, r.dirRef, r.apptRef, r.doj,
-        placeText(r), joinWorks(r)]));
+        r.placeType, r.placeType === 'Range' ? r.placeName : '', joinSub(r), joinWorks(r)]));
   }
 
   /* -- editing -- */
