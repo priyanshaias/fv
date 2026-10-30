@@ -28,10 +28,29 @@ FV is completely separate from UPMC2: it has its own repo, Apps Script project, 
 - **Download Excel** gives the division's list in the circular's column order.
 
 ## Dashboard (admins, `#/admin`)
-- Volunteers entered, divisions entered out of the total, changes recorded, and saves today.
-- Each division's count, last save and the person who saved it. Click a row to open that division.
-- **Change log**: every Added, Edited or Removed value, with old → new, the person's name, designation, mobile and username, and the time. You can filter it by circle and action and search it.
-- Downloads of all volunteers and of the change log, plus a link to the Google Sheet.
+The dashboard is in `docs/js/dashboard.js`. It reads every division at once and works out everything in the browser, so the Apps Script needs no change for it.
+- **Cards** at the top: volunteers entered, added, details missing, divisions reporting, divisions not started, average age, volunteers in beats and camps, and changes this week. Click a card to filter or to jump to the matching list.
+- **Filters**: search, circle, division, details (added / missing), place of posting, nature of works, qualification, age, and missing detail. Each option shows how many volunteers it has. Active filters show as chips, and each chip removes its filter.
+- **Overview tab, with charts you can click to filter:**
+  - progress by circle or by division (added and missing);
+  - place of posting;
+  - nature of works;
+  - qualification;
+  - age;
+  - date of joining by month or year;
+  - what is missing most;
+  - activity over the last 30 days (click a day to see its changes);
+  - divisions to follow up.
+- **Volunteers tab**: every matching volunteer, sortable, with what is missing. Click a row to open the division.
+- **Divisions tab**: each division's volunteers, added, missing, progress, last save and who saved it. Show all divisions, those that need follow-up, those not started or those complete. Sort by circle, least added, most missing, most volunteers or the longest since the last save.
+- **Change log tab**: every Added, Edited or Removed value with old → new, the person's name, designation, mobile and username, and the time. Filter by circle, action, period (today, 7 days, 30 days) and person, or search it.
+- **Reports tab**: each report comes as a PDF (Government of West Bengal letterhead) or Excel, for whatever the filters cover:
+  - **Division progress**: circle by circle, with totals; can show only the divisions that need follow-up.
+  - **Follow-up list**: divisions not started, and each volunteer with details missing. **Copy as message** gives a WhatsApp or e-mail text.
+  - **List of Forest Volunteers**: the circular's format, division by division.
+  - **Abstract**: circle-wise (or division-wise for one circle) totals of added and missing, place of posting, nature of works, qualification and age.
+  - **Change log** for a period, with a division-by-division summary.
+- **Reports** is also in the name menu (`#/admin/reports`). PDFs are made with pdfmake, which loads from cdnjs the first time one is needed.
 
 ## Setup (once)
 
