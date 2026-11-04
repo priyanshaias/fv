@@ -390,7 +390,9 @@ function save_(body, user) {
  * Running it again changes nothing.
  */
 function markListVerified() {
-  const lock = LockService.getScriptLock(); lock.waitLock(25000);
+  // waits up to 4 minutes for a save (or an earlier run) to finish; nothing is written until the lock is held
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(240000)) throw new Error('Another save is still running. Open Executions, wait for it to finish (or stop it), then run markListVerified again.');
   try {
     const ids = (typeof LIST_VERIFIED !== 'undefined' ? LIST_VERIFIED : []).reduce((a, x) => (a[x[0]] = x[1], a), {});
     const rows = readAll_(), when = now_(), log = [], touched = {}, by = LIST_SOURCE + ' (' + LIST_VERIFIED_FILE + ')';
