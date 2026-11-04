@@ -14,6 +14,7 @@
     cal: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
     edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/></svg>',
     sheet: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>',
+    tick: '<svg viewBox="0 0 24 24"><path d="M4 12.5 9.5 18 20 6.5"/></svg>',
   };
   const HELP = { name: 'Sudipta Kundu', office: 'Aranya Bhawan', phone: '+91 70442 30806', tel: '+917044230806' };
 
@@ -34,8 +35,14 @@
   ];
   // what is edited on screen; the sheet keeps duty and details together in one column ("Others: Mahut of elephant Champa")
   // what is edited on screen; the sheet keeps "Within the range" in one column ("Beat: Duttar") and duty with its details in another
-  const FIELDS = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'subType', 'subName', 'duty', 'wdet'];
-  const SENT = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'placeSub', 'works'];
+  const FIELDS = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'subType', 'subName', 'duty', 'wdet', 'ver'];
+  const SENT = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'placeSub', 'works', 'ver'];
+  // verification: a volunteer in the Directorate's own list comes verified; others are verified by the division once every detail is filled
+  const LIST_SOURCE = 'Directorate list';
+  const fromList = r => String(r.verBy || '').indexOf(LIST_SOURCE) === 0;
+  const verOn = () => !!(META && META.verV);
+  const canUnverify = r => !fromList(r) || (API.user && API.user.isAdmin);
+  const verLine = r => fromList(r) ? 'In the Directorate’s list of Forest Volunteers' : r.verBy ? `Verified by ${r.verBy}${r.verOn ? ' on ' + shortWhen(r.verOn) : ''}` : 'Verified';
   // place of posting: Div HQ, or a Range and, inside it, the Range HQ, a Beat or a Camp
   const PLACES = ['Div HQ', 'Range'];
   const SUBS = ['Range HQ', 'Beat', 'Camp'];
@@ -171,6 +178,7 @@
         <li><b>Yellow cells</b> are changed but not saved yet. <b>Red cells</b> need fixing (a missing name or a wrong date).</li>
         <li><b>Dates</b> are typed as DD-MM-YYYY, for example 01-07-2025.</li>
         <li><b>Nature of works:</b> choose the main duty from the list. If none fits, choose <b>Others</b> and write the actual work, for example “Mahut of elephant Champa”.</li>
+        <li><b>Verify:</b> volunteers already in the Directorate’s list show a blue <b>✓</b>. For the others, once every detail is filled, open the volunteer and press <b>✓ Verify</b> (or <b>Verify complete</b> above the sheet for all of them). It is saved at once.</li>
         <li>To remove a volunteer, open it and press <b>Remove this volunteer</b>, then Save.</li>
       </ol>
       <p class="faint">Every save is recorded with your name and designation. Your sign-in lasts 6 hours.</p>`);
@@ -257,7 +265,9 @@
   }
   const divCount = (c, d) => (META.counts || {})[c + '|' + d] || 0;
   const divDone = (c, d) => META.complete ? (META.complete[c + '|' + d] || 0) : null;
-  const doneLine = (n, done) => done == null ? `${n} entered` : `<b class="ok-n">${done} added</b>${n - done ? ` · <span class="miss-n">${n - done} details missing</span>` : ''}`;
+  const divVer = (c, d) => META.verified ? (META.verified[c + '|' + d] || 0) : null;
+  const doneLine = (n, done, ver) => (done == null ? `${n} entered` : `<b class="ok-n">${done} added</b>${n - done ? ` · <span class="miss-n">${n - done} details missing</span>` : ''}`)
+    + (ver == null ? '' : ` · <span class="ver-n">${ver} of ${n} verified</span>`);
   const divSaved = (c, d) => (META.saved || {})[c + '|' + d];
   function tile(title, sub, n, extra, href, i) {
     return `<a class="tile" href="${href}" style="animation-delay:${Math.min(i, 20) * 30}ms;text-decoration:none">
@@ -271,8 +281,8 @@
     const ld = app.querySelector('.loader'); if (ld) ld.remove();
     app.querySelector('.tiles').innerHTML = m.circles.map((c, i) => {
       const n = c.divisions.reduce((a, d) => a + divCount(c.circle, d), 0), started = c.divisions.filter(d => divCount(c.circle, d)).length;
-      const done = META.complete ? c.divisions.reduce((a, d) => a + divDone(c.circle, d), 0) : null;
-      return tile(c.circle, c.office, done == null ? n : done, `${n ? doneLine(n, done) + ' · ' : ''}${started} of ${c.divisions.length} divisions started`, `#/c/${enc(c.circle)}`, i);
+      const done = META.complete ? c.divisions.reduce((a, d) => a + divDone(c.circle, d), 0) : null, ver = META.verified ? c.divisions.reduce((a, d) => a + divVer(c.circle, d), 0) : null;
+      return tile(c.circle, c.office, done == null ? n : done, `${n ? doneLine(n, done, ver) + ' · ' : ''}${started} of ${c.divisions.length} divisions started`, `#/c/${enc(c.circle)}`, i);
     }).join('');
   }
   async function renderDivisions(circle) {
@@ -283,7 +293,7 @@
       <div class="head"><div><h1 class="page-title">${esc(circle)} circle.</h1><p class="page-sub">Choose your division.</p></div></div>
       <div class="tiles">${c.divisions.map((d, i) => {
         const s = divSaved(circle, d), n = divCount(circle, d), done = divDone(circle, d);
-        return tile(d, 'Division', done == null ? n : done, n ? doneLine(n, done) + (s ? ' · saved ' + esc(shortWhen(s.on)) : '') : '<span class="not-started">Not started</span>', `#/d/${enc(circle)}/${enc(d)}`, i);
+        return tile(d, 'Division', done == null ? n : done, n ? doneLine(n, done, divVer(circle, d)) + (s ? ' · saved ' + esc(shortWhen(s.on)) : '') : '<span class="not-started">Not started</span>', `#/d/${enc(circle)}/${enc(d)}`, i);
       }).join('')}</div>`;
   }
 
@@ -368,7 +378,8 @@
       const tip = ks.map(k => p[k]).filter(Boolean)[0], t = cellText(r, c);
       const txt = t ? esc(t) : gap ? '<span class="empty miss">missing</span>' : '<span class="empty">—</span>';
       if (c.k === 'name') {   // the Edit button sits right after the name, so it stays in view when the sheet scrolls sideways
-        return `<td class="${cl}" data-f="name"${tip ? ` title="${esc(tip)}"` : ''}><div class="cv nmv"><span class="nmt">${txt}</span>
+        const vt = verOn() && r.ver && !r.del ? `<span class="vtick${cellChanged(r, 'ver') ? ' pend' : ''}" title="${esc(cellChanged(r, 'ver') ? 'Will be verified when you save' : verLine(r))}" aria-label="Verified">${icon.tick}</span>` : '';
+        return `<td class="${cl}" data-f="name"${tip ? ` title="${esc(tip)}"` : ''}><div class="cv nmv">${vt}<span class="nmt">${txt}</span>
           <button type="button" class="ebtn" data-e="${i}" aria-label="Edit ${esc(r.name || 'this volunteer')}">${r.del ? icon.undo + '<span>Removed</span>' : icon.edit + '<span>Edit</span>'}</button></div></td>`;
       }
       return `<td class="${cl}" data-f="${fieldOf(c)}"${tip ? ` title="${esc(tip)}"` : t ? ` title="${esc(t)}"` : gap ? ' title="Missing: click to fill"' : ''}><div class="cv">${txt}</div></td>`;
@@ -382,16 +393,19 @@
       <div class="head"><div><h1 class="page-title">${esc(G.division)}</h1><p class="page-sub">${esc(G.circle)} circle · ${filled} volunteer${filled === 1 ? '' : 's'}${G.ver.on ? ` · last saved ${esc(shortWhen(G.ver.on))} by ${esc(G.ver.by)}` : ' · not saved yet'}</p></div></div>
       ${(() => {
         const list = G.rows.filter(r => !r.del && !isBlank(r)), done = list.filter(r => !missingOf(r).length).length, miss = list.length - done;
+        const ver = list.filter(r => r.ver).length, toVer = list.filter(r => !r.ver && !missingOf(r).length).length;
         return `<div class="tally">
           <div class="tl ok"><span>Total volunteers added</span><b>${done}</b><small>all details complete</small></div>
           <button type="button" class="tl miss${miss ? '' : ' none'}" id="tallyMiss" ${miss ? '' : 'disabled'}><span>Details missing</span><b>${miss}</b><small>${miss ? 'press to fill the next one ›' : 'nothing missing'}</small></button>
-          <p class="tl-note">A volunteer is counted as <b>added</b> only when every detail is filled. You can save a part-filled entry and complete it later.</p></div>`;
+          ${verOn() ? `<button type="button" class="tl ver${list.length - ver ? '' : ' none'}" id="tallyVer" ${list.length - ver ? '' : 'disabled'}><span>Verified</span><b>${ver}<small class="of"> / ${list.length}</small></b><small>${list.length - ver ? `${list.length - ver} not verified · press to see the next ›` : 'everyone is verified'}</small></button>` : ''}
+          <p class="tl-note">A volunteer is counted as <b>added</b> only when every detail is filled. You can save a part-filled entry and complete it later.${verOn() ? ' Volunteers in the Directorate’s list are already <b>verified</b> (✓). Verify the others once their details are complete.' : ''}</p></div>`;
       })()}
       <div id="sheetNote" class="notice hidden" style="margin:0 0 14px"></div>
       <div class="sheetbar">
         <button class="btn primary save" id="saveBtn" title="Save (Ctrl + S)">${icon.save} Save</button>
         <span class="state" id="state"></span>
         <span class="sp"></span>
+        ${verOn() ? (() => { const k = G.rows.filter(r => !r.del && !isBlank(r) && !r.ver && !missingOf(r).length).length; return k ? `<button class="btn sm verify" id="verAll" title="Verify every volunteer whose details are complete">${icon.tick} Verify complete (${k})</button>` : ''; })() : ''}
         <button class="btn sm soft" id="addOne">${icon.plus} Add volunteer</button>
         <button class="btn sm ghost" id="dlBtn" title="Download this list as an Excel (CSV) file">${icon.down}<span class="hide-sm">Download</span></button>
         <button class="btn sm ghost" data-help>? <span class="hide-sm">How to fill</span></button>
@@ -400,7 +414,7 @@
         <table class="grid" id="grid" style="width:${54 + COLS.reduce((a, c) => a + c.w, 0)}px"><colgroup><col style="width:54px">${COLS.map(c => `<col style="width:${c.w}px">`).join('')}</colgroup>
           <thead><tr><th class="sl">Sl No</th>${COLS.map(c => `<th class="${c.cls || ''}">${esc(c.label)}${c.req ? ' <span class="req">*</span>' : ''}</th>`).join('')}</tr></thead>
           <tbody>${G.rows.map((r, i) => rowHtml(r, i, r.del || isBlank(r) ? (r.del ? '—' : '') : ++sl)).join('')}</tbody></table></div>
-      <div class="gridfoot"><span><i class="legend-sq" style="background:var(--chg)"></i>changed, not saved</span><span><i class="legend-sq" style="background:var(--bad);border-color:var(--danger)"></i>needs fixing</span>
+      <div class="gridfoot">${verOn() ? `<span><span class="vtick">${icon.tick}</span>verified</span>` : ''}<span><i class="legend-sq" style="background:var(--chg)"></i>changed, not saved</span><span><i class="legend-sq" style="background:var(--bad);border-color:var(--danger)"></i>needs fixing</span>
         <span>· Click any row to open it and make changes.</span></div>`;
     const grid = $('#grid');
     const rowOf = e => e.target.closest('tbody tr[data-r]');
@@ -418,6 +432,8 @@
     $('#addOne').onclick = () => { padRows(); openPanel(G.rows.findIndex(r => isBlank(r) && !r.del && !r.id)); };
     const tm = $('#tallyMiss'); if (tm) tm.onclick = () => { const after = G.rows.findIndex((r, i) => i > P.i && !r.del && !isBlank(r) && missingOf(r).length); openNextMissing(after); };
     $('#saveBtn').onclick = save;
+    const tv = $('#tallyVer'); if (tv) tv.onclick = () => openNextUnverified(P.i + 1);
+    const va = $('#verAll'); if (va) va.onclick = verifyAll;
     $('#dlBtn').onclick = () => download(`${G.division} - Forest Volunteers.csv`, csvRows(G.rows.filter(r => !r.del && !isBlank(r))));
     setState();
     if (focusId) { const f = document.getElementById(focusId); if (f) f.focus(); }
@@ -434,9 +450,9 @@
   function csvRows(rows) {
     return [['Sl No', 'Name of Forest Volunteer Engaged', 'Date of Birth', 'Educational Qualification', 'Circle', 'Division', 'Forest Dept.\'s approval ref',
       'Forest Directorate\'s Ref no sent to the Circle in Charge', 'Appointment Order issued by/ reference', 'Date of Joining',
-      'Posted at (Div HQ / Range)', 'Range name', 'Within the range (Range HQ / Beat / Camp)', 'Nature of Works assigned']]
+      'Posted at (Div HQ / Range)', 'Range name', 'Within the range (Range HQ / Beat / Camp)', 'Nature of Works assigned', 'Verification']]
       .concat(rows.map((r, i) => [i + 1, r.name, r.dob, r.qual, G.circle, G.division, r.deptRef, r.dirRef, r.apptRef, r.doj,
-        r.placeType, r.placeType === 'Range' ? r.placeName : '', joinSub(r), joinWorks(r)]));
+        r.placeType, r.placeType === 'Range' ? r.placeName : '', joinSub(r), joinWorks(r), r.ver ? (fromList(r) ? 'Verified (in Directorate list)' : 'Verified') : 'Not verified']));
   }
 
   /* -- editing -- */
@@ -531,6 +547,7 @@
     document.querySelectorAll('#panel [data-err]').forEach(e => { const m = p[e.dataset.err]; e.textContent = m || ''; e.closest('.pf').classList.toggle('bad', !!m); });
     const h = $('#pnTitle'); if (h) h.textContent = r.name || 'New volunteer';
     const pm = $('#pnMiss'); if (pm) pm.innerHTML = missHtml(r);
+    const pv = $('#pnVerBox'); if (pv) pv.innerHTML = verBox(r);
     const a = $('#pnAge'); if (a) a.textContent = ageOf(r.dob);
     pnState();
   }
@@ -548,6 +565,39 @@
     const first = { 'Date of birth': 'dob', 'Date of joining': 'doj', 'Qualification': 'qual', 'Place of posting': 'placeType', 'Range name': 'placeName', 'Range HQ / Beat / Camp': 'subType', 'Nature of works': 'duty', 'Work details': 'wdet',
       'Dept. approval ref': 'deptRef', 'Directorate ref': 'dirRef', 'Appointment order': 'apptRef', 'Name': 'name' }[missingOf(G.rows[j])[0]] || 'subName';
     openPanel(j, first);
+  }
+  /** Opens the next volunteer who is not verified yet (from `from`, wrapping round). */
+  function openNextUnverified(from) {
+    const list = G.rows.map((r, i) => i).filter(i => !G.rows[i].del && !isBlank(G.rows[i]) && !G.rows[i].ver);
+    if (!list.length) { toast('Every volunteer is verified.'); return; }
+    openPanel(list.find(i => i >= (from == null || from < 0 ? 0 : from)) ?? list[0]);
+  }
+  /** Verify (or take off the verification of) the volunteer open in the panel, and save at once. */
+  function setVerified(on) {
+    const r = G.rows[P.i]; if (!r) return;
+    if (on && missingOf(r).length) { toast('Fill every detail before verifying: ' + missingOf(r).join(', ') + '.', true); return; }
+    if (!on && !canUnverify(r)) { toast('This volunteer is in the Directorate’s list. Only an administrator can remove the verification.', true); return; }
+    r.ver = on ? 'Verified' : '';
+    redraw(); markRow(); drawPanel(); saveDraft(); save();
+  }
+  function verifyAll() {
+    const list = G.rows.filter(r => !r.del && !isBlank(r) && !r.ver && !missingOf(r).length);
+    if (!list.length) return;
+    const d = dialog('Verify ' + list.length + ' volunteer' + (list.length === 1 ? '' : 's') + '?', esc(G.division) + ' · every detail of these is filled',
+      `<p>By verifying, you confirm that these volunteers are engaged in the division and that their details are correct:</p>
+       <ul class="ver-list">${list.map(r => `<li>${esc(r.name)}</li>`).join('')}</ul>
+       <p class="faint">This is saved at once and recorded with your name in the change log.</p>`,
+      `<button class="btn" id="vaNo">Cancel</button><button class="btn primary" id="vaYes">${icon.tick} Verify and save</button>`);
+    d.el.querySelector('#vaNo').onclick = d.close;
+    d.el.querySelector('#vaYes').onclick = () => { d.close(); list.forEach(r => r.ver = 'Verified'); redraw(); saveDraft(); save(); };
+  }
+  function verBox(r) {
+    if (!verOn() || r.del || isBlank(r)) return '';
+    const pend = cellChanged(r, 'ver'), miss = missingOf(r);
+    if (r.ver) return `<div class="pn-ver on"><span class="vbadge">${icon.tick}</span><div class="grow"><b>${pend ? 'Will be verified when you save' : 'Verified'}</b><small>${pend ? '' : esc(verLine(r))}</small></div>
+      ${canUnverify(r) ? `<button type="button" class="btn sm ghost" id="pnUnver">${pend ? 'Undo' : 'Remove verification'}</button>` : ''}</div>`;
+    return `<div class="pn-ver"><div class="grow"><b>Not verified</b><small>${miss.length ? 'Fill every detail first, then verify.' : 'Every detail is filled. Check them and verify.'}</small></div>
+      <button type="button" class="btn sm verify" id="pnVer" ${miss.length ? 'disabled' : ''}>${icon.tick} Verify</button></div>`;
   }
   function pnState() {
     const s = $('#pnState'); if (!s) return;
@@ -601,6 +651,8 @@
     if (d.clear != null) { const k = P.cal; P.cal = null; P.view = null; setField(k, ''); return; }
     if (d.calclose != null) { P.cal = null; P.view = null; drawPanel(); return; }
     if (t.id === 'pnSave') return save();
+    if (t.id === 'pnVer') return setVerified(true);
+    if (t.id === 'pnUnver') return setVerified(false);
     if (t.id === 'pnNextMiss') { P.cal = null; P.view = null; return openNextMissing(P.i + 1); }
     if (t.id === 'pnDel') { toggleDel(P.i); if (G.rows[P.i] && G.rows[P.i] === r) drawPanel(); else closePanel(); return; }
   }
@@ -621,7 +673,7 @@
     const pick = (k, opts, wide) => `<div class="opts${wide ? ' wide' : ''}" role="radiogroup">${opts.map(o => `<button type="button" role="radio" aria-checked="${r[k] === o}" class="opt${r[k] === o ? ' on' : ''}" data-set="${k}" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;
     el.innerHTML = `
       <div class="pn-head"><div class="grow"><div class="faint">${r.id || !isBlank(r) ? `Volunteer ${pos || filled + 1} of ${Math.max(filled, pos)}` : 'New volunteer'} · ${esc(G.division)}</div>
-        <h2 id="pnTitle">${esc(r.name || 'New volunteer')}</h2>${r.del ? '<span class="pill attn">Will be removed when you save</span>' : `<div id="pnMiss">${missHtml(r)}</div>`}</div>
+        <h2 id="pnTitle">${esc(r.name || 'New volunteer')}</h2>${r.del ? '<span class="pill attn">Will be removed when you save</span>' : `<div id="pnMiss">${missHtml(r)}</div><div id="pnVerBox">${verBox(r)}</div>`}</div>
         <button class="x" id="pn_close" aria-label="Close">×</button></div>
       <div class="pn-body">
         <section class="pn-sec"><h3>Volunteer</h3>
@@ -693,7 +745,7 @@
     let res;
     try {
       res = await API.call('save', { circle: G.circle, division: G.division, base: G.base, force: force === true,
-        rows: sent.map(r => SENT.reduce((o, k) => (o[k] = k === 'works' ? joinWorks(r) : k === 'placeSub' ? joinSub(r) : k === 'placeName' && r.placeType !== 'Range' ? '' : String(r[k] || '').trim(), o), { id: r.id, key: r.key })), operator: op() });
+        rows: sent.map(r => SENT.filter(k => k !== 'ver' || verOn()).reduce((o, k) => (o[k] = k === 'works' ? joinWorks(r) : k === 'placeSub' ? joinSub(r) : k === 'placeName' && r.placeType !== 'Range' ? '' : String(r[k] || '').trim(), o), { id: r.id, key: r.key })), operator: op() });
     } catch (e) {
       G.saving = false; setState('err', 'Not saved. ' + (e.message || '')); toast('Not saved: ' + (e.message || 'please try again.'), true);
       if (e.auth) { toast('Your sign-in has expired. Your changes are kept on this device. Sign in again and press Save.', true); setTimeout(() => { go('#/'); route(); }, 1800); }
@@ -706,6 +758,7 @@
     G.base = res.ver.n; G.ver = res.ver; G.orderChanged = false;
     store.del(draftKey());
     if (META && META.complete) META.complete[G.circle + '|' + G.division] = res.rows.filter(r => !missingOfSaved(r).length).length;
+    if (META && META.verified) META.verified[G.circle + '|' + G.division] = res.rows.filter(r => r.ver).length;
     if (META) { META.counts[G.circle + '|' + G.division] = res.rows.length; if (res.changes) META.saved[G.circle + '|' + G.division] = { on: res.ver.on, by: res.ver.by }; }
     padRows(); redraw();
     const nt = $('#sheetNote'); if (nt) nt.classList.add('hidden');   // "unsaved changes are back" no longer applies
@@ -733,7 +786,7 @@
   window.addEventListener('beforeunload', e => { if (G && $('#grid') && dirty()) { e.preventDefault(); e.returnValue = ''; } });
 
   /* ---------------- admin dashboard and reports (js/dashboard.js) ---------------- */
-  window.FV_APP = { esc, enc, icon, toast, go, guard, loading, download, shortWhen, missingOfSaved, fromServer, DUTIES, QUALS, meta, divCount, divSaved };
+  window.FV_APP = { esc, enc, icon, toast, go, guard, loading, download, shortWhen, missingOfSaved, fromServer, DUTIES, QUALS, meta, divCount, divSaved, fromList };
   async function renderAdmin() {
     if (!API.user || !API.user.isAdmin) { go('#/circles'); return; }
     await window.FV_DASH.render(app);

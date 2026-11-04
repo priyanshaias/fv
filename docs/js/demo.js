@@ -15,8 +15,8 @@
   const FIELDS = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'placeName', 'placeSub', 'works'];
   const LABEL = { name: 'Name of Forest Volunteer Engaged', dob: 'Date of Birth', qual: 'Educational Qualification', deptRef: "Forest Dept.'s approval ref",
     dirRef: "Forest Directorate's Ref no sent to the Circle in Charge", apptRef: 'Appointment Order issued by / reference', doj: 'Date of Joining',
-    placeType: 'Posted at (Div HQ / Range)', placeName: 'Range name', placeSub: 'Within the range (Range HQ / Beat / Camp)', works: 'Nature of Works assigned' };
-  const KEY = 'fv_demo_db_v3';
+    placeType: 'Posted at (Div HQ / Range)', placeName: 'Range name', placeSub: 'Within the range (Range HQ / Beat / Camp)', works: 'Nature of Works assigned', ver: 'Verification' };
+  const KEY = 'fv_demo_db_v4';
   const pad = n => String(n).padStart(2, '0');
   const now = () => { const d = new Date(); return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
   const uid = () => 'FV-' + Math.random().toString(16).slice(2, 10).toUpperCase();
@@ -72,13 +72,15 @@
       mobile: '', circle: r.circle, division: r.division, vid: r.id, vname: r.name, action: 'Edited', field: LABEL.doj, old: '01-01-2025', value: r.doj }));
     const ts = s => s.replace(/^(\d{2})-(\d{2})-(\d{4})/, '$3$2$1');
     log.sort((a, b) => ts(b.on).localeCompare(ts(a.on)));
+    // most volunteers come verified from the Directorate's list, as on the live sheet
+    rows.forEach((r, i) => { if (i % 7 !== 3 && i % 11 !== 5) { r.ver = 'Verified'; r.verOn = '04-11-2026 21:00:00'; r.verBy = 'Directorate list (All Forest volunteer list, Nov 2026)'; } });
     const ver = {};
     rows.forEach(r => { const k = r.circle + '|' + r.division; if (!ver[k] || ts(r.updOn) > ts(ver[k].on)) ver[k] = { n: 1, on: r.updOn, by: r.updBy }; });
     return { rows, log, ver };
   }
   function db() { try { const d = JSON.parse(localStorage.getItem(KEY) || 'null'); if (d) return d; } catch (e) {} const d = seed(); put(d); return d; }
   function put(d) { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch (e) {} }
-  const pub = r => FIELDS.reduce((o, k) => (o[k] = r[k] || '', o), { id: r.id });
+  const pub = r => FIELDS.concat(['ver', 'verOn', 'verBy']).reduce((o, k) => (o[k] = r[k] || '', o), { id: r.id });
   // same rule as complete_() in Code.gs
   const done = r => ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'placeType', 'works'].every(k => String(r[k] || '').trim())
     && (r.placeType === 'Div HQ' || (r.placeType === 'Range' && String(r.placeName || '').trim() && /^(Range HQ|(Beat|Camp):\s*\S)/.test(r.placeSub || '')))
@@ -87,10 +89,10 @@
 
   const H = {
     meta(b, user) {
-      const d = db(), counts = {}, complete = {}, saved = {};
-      d.rows.forEach(r => { const k = r.circle + '|' + r.division; counts[k] = (counts[k] || 0) + 1; if (done(r)) complete[k] = (complete[k] || 0) + 1; });
+      const d = db(), counts = {}, complete = {}, verified = {}, saved = {};
+      d.rows.forEach(r => { const k = r.circle + '|' + r.division; counts[k] = (counts[k] || 0) + 1; if (done(r)) complete[k] = (complete[k] || 0) + 1; if (r.ver) verified[k] = (verified[k] || 0) + 1; });
       Object.keys(d.ver).forEach(k => saved[k] = { on: d.ver[k].on, by: d.ver[k].by });
-      return { circles: CIRCLES, counts, complete, saved, user: { name: user.name, isAdmin: true, username: 'demo' }, placeV: 2 };
+      return { circles: CIRCLES, counts, complete, verified, saved, user: { name: user.name, isAdmin: true, username: 'demo' }, placeV: 2, verV: 1 };
     },
     load(b) {
       const d = db();
@@ -99,7 +101,7 @@
     save(b, user) {
       const d = db(), k = b.circle + '|' + b.division, ver = d.ver[k] || { n: 0, on: '', by: '' };
       const op = b.operator || {}, who = (op.name || user.name) + (op.designation ? ' (' + op.designation + ')' : '');
-      const sent = (b.rows || []).map(r => FIELDS.reduce((o, f) => (o[f] = String(r[f] || '').replace(/\s+/g, ' ').trim(), o), { id: r.id || '', key: r.key })).filter(o => FIELDS.some(f => o[f]));
+      const sent = (b.rows || []).map(r => FIELDS.reduce((o, f) => (o[f] = String(r[f] || '').replace(/\s+/g, ' ').trim(), o), { id: r.id || '', key: r.key, ver: r.ver ? 'Verified' : '' })).filter(o => FIELDS.some(f => o[f]));
       const bad = [];
       sent.forEach((o, i) => { if (!o.name) bad.push('Row ' + (i + 1) + ': name is missing'); ['dob', 'doj'].forEach(f => { if (!dateOk(o[f])) bad.push('Row ' + (i + 1) + ': ' + LABEL[f] + ' is not a date'); }); });
       if (bad.length) throw new Error(bad.join('; '));
@@ -113,6 +115,13 @@
         let ch = !prev;
         FIELDS.forEach(f => { const ov = prev ? prev[f] || '' : ''; if (ov !== o[f]) { ch = true; r[f] = o[f]; if (prev) L(r, 'Edited', f, ov, o[f]); } });
         if (!prev) FIELDS.forEach(f => { if (r[f]) L(r, 'Added', f, '', r[f]); });
+        if (o.ver && !r.ver) {
+          if (!done(r)) throw new Error((r.name || 'Row ' + (i + 1)) + ': fill every detail before verifying.');
+          r.ver = 'Verified'; r.verOn = when; r.verBy = who; ch = true; L(r, 'Verified', 'ver', '', 'Verified by ' + who);
+        } else if (!o.ver && r.ver) {
+          if (String(r.verBy).indexOf('Directorate list') === 0 && !user.isAdmin) throw new Error((r.name || 'A volunteer') + ' is in the Directorate list; only an administrator can remove the verification.');
+          L(r, 'Verification removed', 'ver', 'Verified (' + r.verBy + ')', ''); r.ver = ''; r.verOn = ''; r.verBy = ''; ch = true;
+        }
         r.sl = i + 1; if (ch) { r.updOn = when; r.updBy = who; }
         return r;
       });

@@ -17,7 +17,8 @@ const COLS = [
   ['deptRef', "Forest Dept.'s approval ref"], ['dirRef', "Forest Directorate's Ref no sent to the Circle in Charge"],
   ['apptRef', 'Appointment Order issued by / reference'], ['doj', 'Date of Joining'],
   ['placeType', 'Posted at (Div HQ / Range)'], ['placeName', 'Range name'], ['placeSub', 'Within the range (Range HQ / Beat / Camp)'],
-  ['works', 'Nature of Works assigned'], ['updOn', 'Last Updated On'], ['updBy', 'Last Updated By'],
+  ['works', 'Nature of Works assigned'], ['ver', 'Verification'], ['verOn', 'Verified On'], ['verBy', 'Verified By'],
+  ['updOn', 'Last Updated On'], ['updBy', 'Last Updated By'],
 ];
 const LABEL = COLS.reduce((a, c) => (a[c[0]] = c[1], a), {});
 // what a division fills, in the order of the on-screen table
@@ -25,6 +26,8 @@ const FIELDS = ['name', 'dob', 'qual', 'deptRef', 'dirRef', 'apptRef', 'doj', 'p
 // headings used by earlier versions of the sheet, so their data is still found
 const OLD_HEADERS = { placeType: ['Present place of Joining (Div HQ / Range / Beat / Camp)'], placeName: ['Name of the place'] };
 const DATES = ['dob', 'doj'];
+// volunteers found in the Directorate's own list are verified by markListVerified(); only an admin can take that off
+const LIST_SOURCE = 'Directorate list';
 const LOG_HEADERS = ['When', 'Username', 'Saved by', 'Designation', 'Mobile', 'Circle', 'Division', 'Volunteer ID', 'Volunteer', 'Action', 'Field', 'Old value', 'New value'];
 
 // First fill of the Lists tab. After setup, edit circles and divisions in the sheet itself.
@@ -276,7 +279,7 @@ function ver_(circle, division) {
   return s ? JSON.parse(s) : { n: 0, on: '', by: '' };
 }
 function setVer_(circle, division, v) { PropertiesService.getScriptProperties().setProperty('ver|' + circle + '|' + division, JSON.stringify(v)); }
-function pub_(r) { const o = { id: r.id }; FIELDS.forEach(k => o[k] = r[k] || ''); return o; }
+function pub_(r) { const o = { id: r.id }; FIELDS.concat(['ver', 'verOn', 'verBy']).forEach(k => o[k] = r[k] || ''); return o; }
 
 /* ============================================================ actions */
 
@@ -294,11 +297,12 @@ function complete_(r) {
 }
 
 function meta_(body, user) {
-  const counts = {}, complete = {}, saved = {};
-  readAll_().forEach(r => { const k = r.circle + '|' + r.division; counts[k] = (counts[k] || 0) + 1; if (complete_(r)) complete[k] = (complete[k] || 0) + 1; });
+  const counts = {}, complete = {}, verified = {}, saved = {};
+  readAll_().forEach(r => { const k = r.circle + '|' + r.division; counts[k] = (counts[k] || 0) + 1; if (complete_(r)) complete[k] = (complete[k] || 0) + 1; if (r.ver) verified[k] = (verified[k] || 0) + 1; });
   const props = PropertiesService.getScriptProperties().getProperties();
   Object.keys(props).forEach(k => { if (k.indexOf('ver|') === 0) { const v = JSON.parse(props[k]); saved[k.slice(4)] = { on: v.on, by: v.by }; } });
-  return { circles: circles_(), counts, complete, saved, user, placeV: 2 };   // placeV: the website saves the new place columns only to this version
+  // placeV: the website saves the new place columns only to this version; verV: this version keeps verification
+  return { circles: circles_(), counts, complete, verified, saved, user, placeV: 2, verV: 1 };
 }
 
 function load_(body) {
@@ -321,7 +325,7 @@ function save_(body, user) {
   const who = (op.name || user.name) + (op.designation ? ' (' + op.designation + ')' : '');
 
   const sent = (body.rows || []).map(r => {
-    const o = { id: String(r.id || ''), key: String(r.key || '') };
+    const o = { id: String(r.id || ''), key: String(r.key || ''), ver: r.ver ? 'Verified' : '' };
     FIELDS.forEach(k => o[k] = String(r[k] == null ? '' : r[k]).replace(/\s+/g, ' ').trim());
     return o;
   }).filter(o => FIELDS.some(k => o[k]));
@@ -355,6 +359,14 @@ function save_(body, user) {
         if (oldV !== newV) { changed = true; r[k] = newV; if (prev) L(r, 'Edited', k, oldV, newV); }
       });
       if (!prev) FIELDS.forEach(k => { if (r[k]) L(r, 'Added', k, '', r[k]); });
+      // verification: given only when every detail is filled; edits later do not take it off
+      if (o.ver && !r.ver) {
+        if (!complete_(r)) throw new Error((r.name || 'Row ' + (i + 1)) + ': fill every detail before verifying.');
+        r.ver = 'Verified'; r.verOn = when; r.verBy = who; changed = true; L(r, 'Verified', 'ver', '', 'Verified by ' + who);
+      } else if (!o.ver && r.ver) {
+        if (String(r.verBy).indexOf(LIST_SOURCE) === 0 && !user.isAdmin) throw new Error((r.name || 'A volunteer') + ' is in the Directorate list; only an administrator can remove the verification.');
+        L(r, 'Verification removed', 'ver', 'Verified (' + r.verBy + ')', ''); r.ver = ''; r.verOn = ''; r.verBy = ''; changed = true;
+      }
       if (String(r.sl) !== String(i + 1)) { r.sl = i + 1; }
       if (changed) { r.updOn = when; r.updBy = who; }
       return r;
@@ -369,6 +381,36 @@ function save_(body, user) {
     const nv = { n: ver.n + 1, on: when, by: who };
     setVer_(circle, division, nv);
     return { rows: kept.map(pub_), ver: nv, ids, changes: log.length };
+  } finally { lock.releaseLock(); }
+}
+
+/**
+ * Run once from the editor: marks as verified the volunteers whose names are in the Directorate's
+ * "All Forest volunteer list" (their IDs are in ListVerified.gs). Each is written to the Change Log.
+ * Running it again changes nothing.
+ */
+function markListVerified() {
+  const lock = LockService.getScriptLock(); lock.waitLock(25000);
+  try {
+    const ids = (typeof LIST_VERIFIED !== 'undefined' ? LIST_VERIFIED : []).reduce((a, x) => (a[x[0]] = x[1], a), {});
+    const rows = readAll_(), when = now_(), log = [], touched = {}, by = LIST_SOURCE + ' (' + LIST_VERIFIED_FILE + ')';
+    let found = 0;
+    rows.forEach(r => {
+      if (!(r.id in ids)) return;
+      found++;
+      if (r.ver) return;
+      r.ver = 'Verified'; r.verOn = when; r.verBy = by;
+      log.push([when, 'script', 'GS', 'Administrator', '', r.circle, r.division, r.id, r.name, 'Verified', LABEL.ver, '',
+        'In the Directorate list' + (ids[r.id] ? ' as "' + ids[r.id] + '"' : '')]);
+      touched[r.circle + '|' + r.division] = [r.circle, r.division];
+    });
+    if (log.length) {
+      writeAll_(rows);
+      const lg = tab_(CONFIG.LOG); lg.getRange(lg.getLastRow() + 1, 1, log.length, LOG_HEADERS.length).setNumberFormat('@').setValues(log);
+      // anyone with a division open is asked to reload before saving over it
+      Object.keys(touched).forEach(k => { const [c, d] = touched[k], v = ver_(c, d); setVer_(c, d, { n: v.n + 1, on: when, by: 'GS (verified from the Directorate list)' }); });
+    }
+    Logger.log('Directorate list: ' + Object.keys(ids).length + ' IDs, ' + found + ' found in the sheet, ' + log.length + ' newly verified in ' + Object.keys(touched).length + ' division(s).');
   } finally { lock.releaseLock(); }
 }
 

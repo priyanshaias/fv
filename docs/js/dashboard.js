@@ -40,8 +40,8 @@
     'Forest Protection and Patrolling': 'Protection & patrolling', 'Human-Animal Conflict Management': 'Man-animal conflict', 'Night Guard/Security': 'Night guard / security',
     'Madhyamik (Class X)': 'Madhyamik (X)', 'Higher Secondary (Class XII)': 'Higher Sec. (XII)' };
   const TABS = [['overview', 'Overview'], ['volunteers', 'Volunteers'], ['divisions', 'Divisions'], ['log', 'Change log'], ['reports', 'Reports']];
-  const SELS = [['circle', 'Circle'], ['division', 'Division'], ['status', 'Details'], ['place', 'Place of posting'], ['duty', 'Nature of works'], ['qual', 'Qualification'], ['age', 'Age'], ['miss', 'Missing detail']];
-  const EMPTY = { q: '', circle: '', division: '', status: '', place: '', duty: '', qual: '', age: '', joined: '', miss: '' };
+  const SELS = [['circle', 'Circle'], ['division', 'Division'], ['status', 'Details'], ['ver', 'Verification'], ['place', 'Place of posting'], ['duty', 'Nature of works'], ['qual', 'Qualification'], ['age', 'Age'], ['miss', 'Missing detail']];
+  const EMPTY = { q: '', circle: '', division: '', status: '', ver: '', place: '', duty: '', qual: '', age: '', joined: '', miss: '' };
   const D = {
     f: Object.assign({}, EMPTY), tab: 'overview', at: 0, rows: [], log: [], logTotal: 0, sheetUrl: '', meta: null,
     by: 'circle', dsort: 'low', sort: { k: 'circle', dir: 1 }, shown: 100,
@@ -53,7 +53,7 @@
     const v = A().fromServer(Object.assign({}, r)), miss = A().missingOfSaved(r), dob = when(r.dob), doj = when(r.doj);
     const age = dob ? Math.floor((Date.now() - dob) / (365.2425 * DAY)) : null;
     const place = v.placeType === 'Div HQ' ? 'Div HQ' : v.placeType === 'Range' ? (SUBS.includes(v.subType) ? v.subType : 'Range (not specified)') : 'Not given';
-    return { r, v, miss, done: !miss.length, age, ageBand: age == null ? 'Not given' : (AGES.find(b => age >= b[1] && age < b[2]) || AGES[0])[0],
+    return { r, v, miss, done: !miss.length, ver: !!r.ver, list: A().fromList(r), age, ageBand: age == null ? 'Not given' : (AGES.find(b => age >= b[1] && age < b[2]) || AGES[0])[0],
       doj, jk: doj ? doj.getFullYear() + '-' + p2(doj.getMonth() + 1) : '', place, duty: v.duty || 'Not given', qual: r.qual || 'Not given',
       text: [r.name, r.circle, r.division, r.qual, r.deptRef, r.dirRef, r.apptRef, r.placeName, r.placeSub, r.works, r.id, r.updBy].join(' ').toLowerCase() };
   }
@@ -62,7 +62,7 @@
   function view(skip) {
     const f = D.f, q = f.q.trim().toLowerCase(), sk = k => skip === k || (skip === 'circle' && k === 'division');
     return D.rows.filter(x => (sk('circle') || !f.circle || x.r.circle === f.circle) && (sk('division') || !f.division || x.r.division === f.division)
-      && (sk('status') || !f.status || (f.status === 'done') === x.done) && (sk('place') || !f.place || x.place === f.place)
+      && (sk('status') || !f.status || (f.status === 'done') === x.done) && (sk('ver') || !f.ver || (f.ver === 'yes') === x.ver) && (sk('place') || !f.place || x.place === f.place)
       && (sk('duty') || !f.duty || x.duty === f.duty) && (sk('qual') || !f.qual || x.qual === f.qual) && (sk('age') || !f.age || x.ageBand === f.age)
       && (sk('joined') || !f.joined || x.jk.startsWith(f.joined)) && (sk('miss') || !f.miss || x.miss.includes(f.miss)) && (sk('q') || !q || x.text.includes(q)));
   }
@@ -85,6 +85,7 @@
     if (f.circle) out.push(['circle', `Circle: ${f.circle}`]);
     if (f.division) out.push(['division', `Division: ${f.division}`]);
     if (f.status) out.push(['status', f.status === 'done' ? 'Added (all details)' : 'Details missing']);
+    if (f.ver) out.push(['ver', f.ver === 'yes' ? 'Verified' : 'Not verified']);
     if (f.place) out.push(['place', `Posted at: ${f.place}`]);
     if (f.duty) out.push(['duty', `Works: ${f.duty}`]);
     if (f.qual) out.push(['qual', `Qualification: ${f.qual}`]);
@@ -159,6 +160,7 @@
         h = opt('', 'All divisions') + D.meta.circles.filter(x => !f.circle || x.circle === f.circle).map(x => `<optgroup label="${esc(x.circle)}">${x.divisions
           .map(d => opt(x.circle + '|' + d, d, c[x.circle + '|' + d] || 0, f.circle === x.circle && f.division === d)).join('')}</optgroup>`).join('');
       } else if (k === 'status') { const c = tally(view('status'), x => x.done ? 'done' : 'missing'); h = opt('', 'All') + opt('done', 'Added (all details)', c.done || 0, f.status === 'done') + opt('missing', 'Details missing', c.missing || 0, f.status === 'missing'); }
+      else if (k === 'ver') { const c = tally(view('ver'), x => x.ver ? 'yes' : 'no'); h = opt('', 'All') + opt('yes', 'Verified', c.yes || 0, f.ver === 'yes') + opt('no', 'Not verified', c.no || 0, f.ver === 'no'); }
       else { const c = tally(view(k), x => k === 'miss' ? x.miss : x[k === 'age' ? 'ageBand' : k]); h = opt('', 'All') + LISTS[k](c).filter(v => c[v] || f[k] === v).map(v => opt(v, v, c[v] || 0, f[k] === v)).join(''); }
       s.innerHTML = h;
     });
@@ -222,6 +224,7 @@
     const f = D.f;
     if (k === 'all') { D.f = Object.assign({}, EMPTY); $('#fq').value = ''; return drawAll(); }
     if (k === 'done' || k === 'missing') return setF({ status: f.status === k ? '' : k });
+    if (k === 'ver') return setF({ ver: f.ver === 'no' ? '' : 'no' });
     if (k === 'divs' || k === 'notstarted') { D.dv.show = k === 'divs' ? 'all' : 'notstarted'; return setTab('divisions'); }
     if (k === 'log') { Object.assign(D.L, { days: '7', day: '' }); return setTab('log'); }
     if (k === 'age' || k === 'field') {
@@ -232,7 +235,7 @@
 
   /* ---------------- KPI cards ---------------- */
   function kpis() {
-    const v = view(), f = D.f, done = v.filter(x => x.done).length, miss = v.length - done;
+    const v = view(), f = D.f, done = v.filter(x => x.done).length, miss = v.length - done, ver = v.filter(x => x.ver).length, lst = v.filter(x => x.list).length;
     const divs = scopeDivs(), has = new Set(D.rows.map(x => x.r.circle + '|' + x.r.division)), started = divs.filter(d => has.has(d.c + '|' + d.d)).length;
     const ages = v.filter(x => x.age != null), avg = ages.length ? ages.reduce((a, x) => a + x.age, 0) / ages.length : null;
     const field = v.filter(x => x.place === 'Beat' || x.place === 'Camp').length;
@@ -241,6 +244,7 @@
       ['all', 'Volunteers entered', n(v.length), v.length === D.rows.length ? 'every saved entry' : `of ${n(D.rows.length)} in all`, 'muted', 100, !hasF()],
       ['done', 'Added', n(done), `${pct(done, v.length)}% have all details`, 'good', pct(done, v.length), f.status === 'done'],
       ['missing', 'Details missing', n(miss), 'saved, not complete', 'warn', pct(miss, v.length), f.status === 'missing'],
+      ['ver', 'Verified', `${n(ver)}<small class="of"> / ${n(v.length)}</small>`, `${n(lst)} in Directorate list · ${n(v.length - ver)} not verified`, 'blue', pct(ver, v.length), f.ver === 'no'],
       ['divs', 'Divisions reporting', `${n(started)}<small class="of"> / ${n(divs.length)}</small>`, `${pct(started, divs.length)}% have started`, 'blue', pct(started, divs.length)],
       ['notstarted', 'Not started', n(divs.length - started), 'divisions with no entry', divs.length - started ? 'hot' : 'muted', pct(divs.length - started, divs.length)],
       ['age', 'Average age', avg == null ? '—' : avg.toFixed(1), `${n(ages.length)} with date of birth`, 'violet', null],
@@ -354,7 +358,7 @@
   const VCOLS = [
     ['name', 'Volunteer', x => x.r.name.toLowerCase()], ['circle', 'Circle / division', null], ['age', 'Age', x => x.age, 'r'], ['qual', 'Qualification', x => x.qual],
     ['doj', 'Joined', x => x.doj ? +x.doj : null], ['place', 'Place of posting', x => x.place + '|' + x.r.placeName + '|' + x.r.placeSub], ['duty', 'Nature of works', x => x.duty],
-    ['status', 'Details', x => x.miss.length],
+    ['status', 'Details', x => x.miss.length], ['ver', 'Verified', x => x.ver ? (x.list ? 0 : 1) : 2],
   ];
   function sortedView() {
     const o = order(), c = VCOLS.find(x => x[0] === D.sort.k) || VCOLS[1], dir = D.sort.dir;
@@ -384,7 +388,8 @@
         <td class="num" style="white-space:nowrap">${esc(r.doj) || '<span class="faint">—</span>'}</td>
         <td>${place}</td>
         <td>${v.duty ? esc(v.duty) : '<span class="faint">—</span>'}${v.wdet ? `<div class="faint">${esc(v.wdet)}</div>` : ''}</td>
-        <td>${x.done ? '<span class="pill verified">Complete</span>' : `<span class="pill attn">${x.miss.length} missing</span><div class="faint">${esc(x.miss.slice(0, 3).join(', '))}${x.miss.length > 3 ? '…' : ''}</div>`}</td></tr>`;
+        <td>${x.done ? '<span class="pill verified">Complete</span>' : `<span class="pill attn">${x.miss.length} missing</span><div class="faint">${esc(x.miss.slice(0, 3).join(', '))}${x.miss.length > 3 ? '…' : ''}</div>`}</td>
+        <td>${x.ver ? `<span class="pill vpill">✓ Verified</span><div class="faint">${x.list ? 'Directorate list' : esc(String(r.verBy || '').split(' (')[0])}</div>` : '<span class="pill nv">Not verified</span>'}</td></tr>`;
     }).join('')}</tbody></table></div>
       <div class="tfoot"><span class="faint">Showing ${n(rows.length)} of ${n(list.length)} · Excel and PDF include every matching volunteer</span>
         ${list.length > rows.length ? `<button class="btn sm" id="vMore">Show ${n(Math.min(200, list.length - rows.length))} more</button>` : ''}</div></div>`;
@@ -392,8 +397,8 @@
 
   /* ---------------- divisions ---------------- */
   function divStats() {
-    const by = {}; D.rows.forEach(x => { const k = x.r.circle + '|' + x.r.division, c = by[k] = by[k] || { t: 0, dn: 0 }; c.t++; if (x.done) c.dn++; });
-    return scopeDivs().map((d, i) => { const c = by[d.c + '|' + d.d] || { t: 0, dn: 0 }, s = A().divSaved(d.c, d.d), at = s && when(s.on);
+    const by = {}; D.rows.forEach(x => { const k = x.r.circle + '|' + x.r.division, c = by[k] = by[k] || { t: 0, dn: 0, vr: 0 }; c.t++; if (x.done) c.dn++; if (x.ver) c.vr++; });
+    return scopeDivs().map((d, i) => { const c = by[d.c + '|' + d.d] || { t: 0, dn: 0, vr: 0 }, s = A().divSaved(d.c, d.d), at = s && when(s.on);
       return Object.assign({ i, m: c.t - c.dn, s, idle: at ? Math.floor((day0(Date.now()) - day0(+at)) / DAY) : null }, d, c); });
   }
   const DV_SHOW = [['all', 'All'], ['followup', 'Need follow-up'], ['notstarted', 'Not started'], ['complete', 'Complete']];
@@ -406,34 +411,35 @@
     const cnt = k => all.filter(x => dvKeep(x, k)).length, grouped = D.dv.sort === 'circle';
     const row = x => `<tr data-go="#/d/${A().enc(x.c)}/${A().enc(x.d)}" tabindex="0"><td class="tn">${esc(x.d)}${grouped ? '' : `<div class="faint">${esc(x.c)}</div>`}</td>
       <td class="r num">${x.t || '<span class="faint">0</span>'}</td><td class="r num">${x.dn ? `<span class="ok-n">${x.dn}</span>` : '0'}</td><td class="r num">${x.m ? `<span class="miss-n">${x.m}</span>` : '0'}</td>
+      <td class="r num">${x.t ? `<span class="ver-n">${x.vr}</span>${x.t - x.vr ? `<div class="faint">${x.t - x.vr} not</div>` : ''}` : '0'}</td>
       <td>${x.t ? `<span class="dvbar"><span><i class="g" style="width:${pct(x.dn, x.t)}%"></i><i class="o" style="width:${100 - pct(x.dn, x.t)}%"></i></span><b class="num">${pct(x.dn, x.t)}%</b></span>` : '<span class="not-started">Not started</span>'}</td>
       <td class="num" style="white-space:nowrap">${x.s ? esc(A().shortWhen(x.s.on)) : '<span class="faint">—</span>'}${x.idle != null ? `<div class="faint">${x.idle === 0 ? 'today' : x.idle === 1 ? 'yesterday' : x.idle + ' days ago'}</div>` : ''}</td>
       <td>${x.s ? esc(x.s.by) : ''}</td></tr>`;
     let body = '';
     if (grouped) D.meta.circles.forEach(c => { const g = list.filter(x => x.c === c.circle); if (!g.length) return;
       const t = g.reduce((a, x) => a + x.t, 0), dn = g.reduce((a, x) => a + x.dn, 0);
-      body += `<tr class="plainrow"><td colspan="7" class="circle-h">${esc(c.circle)} <span class="faint">· ${g.filter(x => x.t).length} of ${g.length} started · ${dn} added · ${t - dn} details missing</span></td></tr>` + g.map(row).join(''); });
+      body += `<tr class="plainrow"><td colspan="8" class="circle-h">${esc(c.circle)} <span class="faint">· ${g.filter(x => x.t).length} of ${g.length} started · ${dn} added · ${t - dn} details missing</span></td></tr>` + g.map(row).join(''); });
     else body = list.map(row).join('');
     return `<div class="tablecard"><div class="tc-head"><h2>Divisions</h2>
         <div class="seg" role="group" aria-label="Show">${DV_SHOW.map(([k, l]) => `<button data-show="${k}" class="${D.dv.show === k ? 'on' : ''}">${l} <span class="num">${cnt(k)}</span></button>`).join('')}</div>
         <select class="dsort" id="dvSort" aria-label="Sort">${Object.entries(DV_SORT).map(([k, v]) => `<option value="${k}"${D.dv.sort === k ? ' selected' : ''}>${v[0]}</option>`).join('')}</select>
         <span class="sp"></span><button class="btn sm" data-rep="progress" data-out="xls">${IC.xls} Excel</button><button class="btn sm" data-rep="progress" data-out="pdf">${IC.pdf} PDF</button></div>
-      <div class="tscroll"><table class="dtable"><thead><tr><th>Division</th><th class="r">Volunteers</th><th class="r">Added</th><th class="r">Details missing</th><th>Progress</th><th>Last saved</th><th>By</th></tr></thead>
-        <tbody>${body || '<tr class="plainrow"><td colspan="7" class="muted" style="padding:24px;text-align:center">No divisions here.</td></tr>'}</tbody></table></div>
+      <div class="tscroll"><table class="dtable"><thead><tr><th>Division</th><th class="r">Volunteers</th><th class="r">Added</th><th class="r">Details missing</th><th class="r">Verified</th><th>Progress</th><th>Last saved</th><th>By</th></tr></thead>
+        <tbody>${body || '<tr class="plainrow"><td colspan="8" class="muted" style="padding:24px;text-align:center">No divisions here.</td></tr>'}</tbody></table></div>
       <div class="tfoot"><span class="faint">Counts include every volunteer of the division; only the circle and division filters apply here. Click a division to open its list.</span></div></div>`;
   }
 
   /* ---------------- change log ---------------- */
   function logList() {
     const L = D.L, q = L.q.toLowerCase().trim(), from = L.days ? day0(Date.now() - (+L.days - 1) * DAY) : 0;
-    return logScope().filter(l => (L.act === 'all' || l.action === L.act) && (!L.who || l.by === L.who) && (!L.day || l.on.startsWith(L.day))
+    return logScope().filter(l => (L.act === 'all' || l.action === L.act || (L.act === 'Verified' && l.action === 'Verification removed')) && (!L.who || l.by === L.who) && (!L.day || l.on.startsWith(L.day))
       && (!from || (when(l.on) || 0) >= from) && (!q || [l.by, l.desig, l.username, l.division, l.circle, l.vname, l.field, l.old, l.value].join(' ').toLowerCase().includes(q)));
   }
   function logHtml() {
     const L = D.L, people = [...new Set(logScope().map(l => l.by))].filter(Boolean).sort();
     return `<div class="logbar">
         <select id="logCircle" aria-label="Circle"><option value="">All circles</option>${D.meta.circles.map(c => `<option${D.f.circle === c.circle ? ' selected' : ''}>${esc(c.circle)}</option>`).join('')}</select>
-        <div class="seg" role="group" aria-label="Action">${['all', 'Added', 'Edited', 'Removed'].map(a => `<button data-act="${a}" class="${L.act === a ? 'on' : ''}">${a === 'all' ? 'All' : a}</button>`).join('')}</div>
+        <div class="seg" role="group" aria-label="Action">${['all', 'Added', 'Edited', 'Removed', 'Verified'].map(a => `<button data-act="${a}" class="${L.act === a ? 'on' : ''}">${a === 'all' ? 'All' : a}</button>`).join('')}</div>
         <div class="seg" role="group" aria-label="Period">${[['1', 'Today'], ['7', '7 days'], ['30', '30 days'], ['', 'All time']].map(([k, l]) => `<button data-days="${k}" class="${!L.day && L.days === k ? 'on' : ''}">${l}</button>`).join('')}</div>
         ${L.day ? `<button class="fchip" id="dayX">On ${esc(L.day)} <span aria-hidden="true">×</span></button>` : ''}
         <select id="logWho" aria-label="Saved by"><option value="">Everyone</option>${people.map(p => `<option${L.who === p ? ' selected' : ''}>${esc(p)}</option>`).join('')}</select>
@@ -475,24 +481,24 @@
   // Each report is built once as a spec { title, subtitle, kpis, blocks: [{ heading, columns, rows }] } and written out as PDF or Excel (CSV).
   // A row is an array of cells; { _h: text } is a heading row across the table; row._b marks a total row.
   const col = (label, o) => Object.assign({ label }, o || {});
-  function unitTotals(list, keyFn) { const by = {}; list.forEach(x => { const k = keyFn(x), c = by[k] = by[k] || { t: 0, dn: 0 }; c.t++; if (x.done) c.dn++; }); return by; }
+  function unitTotals(list, keyFn) { const by = {}; list.forEach(x => { const k = keyFn(x), c = by[k] = by[k] || { t: 0, dn: 0, vr: 0 }; c.t++; if (x.done) c.dn++; if (x.ver) c.vr++; }); return by; }
   function specProgress() {
-    const v = view('status'), by = unitTotals(v, x => x.r.circle + '|' + x.r.division), rows = [], o = { t: 0, dn: 0, divs: 0, st: 0 };
+    const v = view('status'), by = unitTotals(v, x => x.r.circle + '|' + x.r.division), rows = [], o = { t: 0, dn: 0, vr: 0, divs: 0, st: 0 };
     D.meta.circles.filter(c => !D.f.circle || c.circle === D.f.circle).forEach(c => {
-      const ds = c.divisions.filter(d => !D.f.division || d === D.f.division).map(d => Object.assign({ d }, by[c.circle + '|' + d] || { t: 0, dn: 0 }, { s: A().divSaved(c.circle, d) }))
+      const ds = c.divisions.filter(d => !D.f.division || d === D.f.division).map(d => Object.assign({ d }, by[c.circle + '|' + d] || { t: 0, dn: 0, vr: 0 }, { s: A().divSaved(c.circle, d) }))
         .filter(x => !D.rp.only || !x.t || x.t > x.dn);
       if (!ds.length) return;
-      const t = ds.reduce((a, x) => a + x.t, 0), dn = ds.reduce((a, x) => a + x.dn, 0), st = ds.filter(x => x.t).length;
+      const t = ds.reduce((a, x) => a + x.t, 0), dn = ds.reduce((a, x) => a + x.dn, 0), vr = ds.reduce((a, x) => a + x.vr, 0), st = ds.filter(x => x.t).length;
       rows.push({ _h: `${c.circle} circle · ${st} of ${ds.length} divisions started` });
-      ds.forEach((x, i) => rows.push([i + 1, x.d, x.t, x.dn, x.t - x.dn, x.t ? pct(x.dn, x.t) + '%' : '', x.t ? (x.s ? A().shortWhen(x.s.on) : '') : 'Not started', x.s ? x.s.by : '']));
-      rows.push(Object.assign(['', 'Total, ' + c.circle, t, dn, t - dn, t ? pct(dn, t) + '%' : '', '', ''], { _b: true }));
-      o.t += t; o.dn += dn; o.divs += ds.length; o.st += st;
+      ds.forEach((x, i) => rows.push([i + 1, x.d, x.t, x.dn, x.t - x.dn, x.t ? pct(x.dn, x.t) + '%' : '', x.vr, x.t ? (x.s ? A().shortWhen(x.s.on) : '') : 'Not started', x.s ? x.s.by : '']));
+      rows.push(Object.assign(['', 'Total, ' + c.circle, t, dn, t - dn, t ? pct(dn, t) + '%' : '', vr, '', ''], { _b: true }));
+      o.t += t; o.dn += dn; o.vr += vr; o.divs += ds.length; o.st += st;
     });
-    if (rows.length) rows.push(Object.assign(['', 'Grand total', o.t, o.dn, o.t - o.dn, o.t ? pct(o.dn, o.t) + '%' : '', '', ''], { _b: true }));
+    if (rows.length) rows.push(Object.assign(['', 'Grand total', o.t, o.dn, o.t - o.dn, o.t ? pct(o.dn, o.t) + '%' : '', o.vr, '', ''], { _b: true }));
     return { title: 'Division progress', file: 'Division_progress', landscape: false,
-      kpis: [['Divisions', o.divs], ['Started', o.st, 'blue'], ['Not started', o.divs - o.st, 'orange'], ['Volunteers', o.t], ['Added', o.dn, 'green'], ['Details missing', o.t - o.dn, 'orange']],
+      kpis: [['Divisions', o.divs], ['Started', o.st, 'blue'], ['Not started', o.divs - o.st, 'orange'], ['Volunteers', o.t], ['Added', o.dn, 'green'], ['Details missing', o.t - o.dn, 'orange'], ['Verified', o.vr, 'blue']],
       blocks: [{ columns: [col('Sl', { w: 18 }), col('Division', { w: '*' }), col('Volunteers', { num: 1, w: 50 }), col('Added', { num: 1, w: 38 }), col('Details missing', { num: 1, w: 50, warn: r => r[4] > 0 }),
-        col('% added', { num: 1, w: 38 }), col('Last saved', { w: 72, warn: r => r[6] === 'Not started' }), col('Saved by', { w: 120 })], rows }] };
+        col('% added', { num: 1, w: 38 }), col('Verified', { num: 1, w: 40 }), col('Last saved', { w: 72, warn: r => r[7] === 'Not started' }), col('Saved by', { w: 110 })], rows }] };
   }
   function specFollowup() {
     const has = new Set(D.rows.map(x => x.r.circle + '|' + x.r.division));
@@ -532,15 +538,15 @@
     list.forEach(x => {
       const r = x.r, kk = r.circle + '|' + r.division;
       if (kk !== k) { k = kk; i = 0; const c = list.filter(y => y.r.circle === r.circle && y.r.division === r.division).length; rows.push({ _h: `${r.division} division, ${r.circle} circle · ${c} volunteer${c === 1 ? '' : 's'}` }); }
-      rows.push([++i, r.name, r.dob, r.qual, r.deptRef, r.dirRef, r.apptRef, r.doj, r.placeType, r.placeName, r.placeSub, r.works, x.done ? 'Complete' : 'Missing: ' + x.miss.join(', ')]);
+      rows.push([++i, r.name, r.dob, r.qual, r.deptRef, r.dirRef, r.apptRef, r.doj, r.placeType, r.placeName, r.placeSub, r.works, x.done ? 'Complete' : 'Missing: ' + x.miss.join(', '), x.ver ? (x.list ? 'Verified (Directorate list)' : 'Verified') : 'Not verified']);
     });
-    const done = list.filter(x => x.done).length;
+    const done = list.filter(x => x.done).length, vd = list.filter(x => x.ver).length;
     return { title: 'List of Forest Volunteers', file: 'List_of_Forest_Volunteers', landscape: true, small: true,
-      kpis: [['Volunteers', list.length], ['Added (all details)', done, 'green'], ['Details missing', list.length - done, 'orange'], ['Divisions', new Set(list.map(x => x.r.circle + x.r.division)).size]],
+      kpis: [['Volunteers', list.length], ['Added (all details)', done, 'green'], ['Details missing', list.length - done, 'orange'], ['Verified', vd, 'blue'], ['Divisions', new Set(list.map(x => x.r.circle + x.r.division)).size]],
       blocks: [{ columns: [col('Sl', { w: 14 }), col('Name of Forest Volunteer Engaged', { w: 70 }), col('Date of Birth', { w: 40 }), col('Educational Qualification', { w: 48 }),
         col('Forest Dept.’s approval ref', { w: 58 }), col('Forest Directorate’s Ref no sent to the Circle in Charge', { w: 58 }), col('Appointment Order issued by / reference', { w: 62 }),
         col('Date of Joining', { w: 40 }), col('Posted at', { w: 30 }), col('Range name', { w: 48 }), col('Within the range', { w: 50 }), col('Nature of Works assigned', { w: '*' }),
-        col('Details', { w: 56, warn: r => r[12] !== 'Complete' })], rows }] };
+        col('Details', { w: 56, warn: r => r[12] !== 'Complete' }), col('Verification', { w: 44, warn: r => r[13] === 'Not verified' })], rows }] };
   }
   function specAbstract() {
     const v = view(), byDiv = !!D.f.circle, unit = x => byDiv ? x.r.division : x.r.circle;

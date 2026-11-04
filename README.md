@@ -13,6 +13,11 @@ FV is completely separate from UPMC2: it has its own repo, Apps Script project, 
 
 ## What the operator sees
 - **Added vs details missing.** A volunteer counts as **added** only when every detail is filled: name, date of birth, qualification, the three references, date of joining, place of joining (and its name unless Div HQ), and nature of works (with the work written out for Others). Part-filled entries can be saved and completed later. Each division shows **Total volunteers added** and **Details missing** at the top; pressing **Details missing** opens the next incomplete volunteer at the first empty field. Incomplete rows have an orange mark and their empty cells say *missing*.
+- **Verification**, as in the CDL+BS app. A blue **✓** before the name means the volunteer is verified.
+  - Volunteers whose names are in the Directorate's **All Forest volunteer list** (577 names, Nov 2026) are verified from the start ("In the Directorate's list"). Only an admin can take that off.
+  - For anyone else, the division opens the volunteer and presses **✓ Verify** once every detail is filled. **Verify complete (n)** above the sheet verifies all the complete ones at once. Verifying saves straight away and goes into the Change Log with the person's name.
+  - The **Verified** box at the top shows how many are verified; pressing it opens the next one that is not.
+  - Later edits do not remove a verification. **Remove verification** in the panel does (admins only for the Directorate list).
 - **Circle → Division**, with the number of volunteers entered and when the division was last saved.
 - **Nature of works** uses the DL / CDL duty list (Cleaning, Nursery, Timber depot, Driver, Mali, Protection & patrolling, Human-animal conflict, Night guard) plus **Others**, which needs the actual work written out. Duty and details are kept together in one sheet column, e.g. `Others: Mahut of elephant Champa`.
 - **Edit panel.** **Edit** at the end of any row, or **Add volunteer**, opens a panel for one volunteer at a time:
@@ -29,8 +34,8 @@ FV is completely separate from UPMC2: it has its own repo, Apps Script project, 
 
 ## Dashboard (admins, `#/admin`)
 The dashboard is in `docs/js/dashboard.js`. It reads every division at once and works out everything in the browser, so the Apps Script needs no change for it.
-- **Cards** at the top: volunteers entered, added, details missing, divisions reporting, divisions not started, average age, volunteers in beats and camps, and changes this week. Click a card to filter or to jump to the matching list.
-- **Filters**: search, circle, division, details (added / missing), place of posting, nature of works, qualification, age, and missing detail. Each option shows how many volunteers it has. Active filters show as chips, and each chip removes its filter.
+- **Cards** at the top: volunteers entered, added, details missing, verified (and how many from the Directorate list), divisions reporting, divisions not started, average age, volunteers in beats and camps, and changes this week. Click a card to filter or to jump to the matching list.
+- **Filters**: search, circle, division, details (added / missing), verification, place of posting, nature of works, qualification, age, and missing detail. Each option shows how many volunteers it has. Active filters show as chips, and each chip removes its filter.
 - **Overview tab, with charts you can click to filter:**
   - progress by circle or by division (added and missing);
   - place of posting;
@@ -70,6 +75,14 @@ The dashboard is in `docs/js/dashboard.js`. It reads every division at once and 
    API_URL: 'https://script.google.com/macros/s/…/exec',
    ```
 2. Push. GitHub Pages serves `docs/` from `main`.
+
+### Verifying from the Directorate's list (once)
+1. Update `Code.gs` in the Apps Script editor with this repo's `apps-script/Code.gs`.
+2. Click **+ → Script**, name it `ListVerified`, and paste the private `apps-script/ListVerified.gs` from this computer (not in GitHub: it has the names as written in the list).
+3. Select **markListVerified** and click **Run**. The log says how many were verified. Running it again changes nothing.
+4. **Deploy → Manage deployments → ✎ → Version: New version → Deploy.** Until then the website hides the verify buttons.
+
+The comparison of the list with the app is in `Reports/FV_List_vs_App_Verification_04-11-2026.xlsx` (outside this repo).
 
 ### Circles and divisions
 These are in the **Lists** tab of the sheet, one row per division (Circle, Office, Division). Add or rename rows there, and the app picks the change up on the next load. Do not rename a division that already has volunteers; add the new name instead.
